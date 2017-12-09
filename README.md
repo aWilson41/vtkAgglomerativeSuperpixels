@@ -7,3 +7,7 @@ You've got a few options with this filter.
 - SetWeight: The merging of pixels is done via an energy definition. We merge the pairs with the minimal energy. The energy defintion is given via a spatial (position) and color component. This simply weights the color component giving it more of an effect in the resulting image.
 
 Note: Exclude Zero doesn't work yet. The filter only works with 2d or 3d grayscale float images. Would be easy to alter to other data types and color spaces. ie: rgb, lab, etc.
+
+![Alt text](https://andaharoo.files.wordpress.com/2017/11/superpixel-segmentation.png?w=1140)
+
+![Alt text](https://andaharoo.files.wordpress.com/2017/12/output.png?w=354&h=236)

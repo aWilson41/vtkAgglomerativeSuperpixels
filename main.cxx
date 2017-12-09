@@ -87,8 +87,14 @@ void test2DImage()
 	imageViewer->Render();*/
 	renderWindowInteractor->Start();
 
+	// To write the image as png we cast to uchar
+	vtkSmartPointer<vtkImageCast> writeCast = vtkSmartPointer<vtkImageCast>::New();
+	writeCast->SetInputData(superpixelFilter->GetOutput());
+	writeCast->SetOutputScalarTypeToUnsignedChar();
+	writeCast->Update();
+
 	vtkSmartPointer<vtkPNGWriter> writer = vtkSmartPointer<vtkPNGWriter>::New();
-	writer->SetInputData(superpixelFilter->GetOutput());
+	writer->SetInputData(writeCast->GetOutput());
 	writer->SetFileName("output.png");
 	writer->Write();
 }

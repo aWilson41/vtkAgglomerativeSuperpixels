@@ -13,7 +13,7 @@ public:
 		x = y = z = g = -1.0;
 	}
 
-	PixelNode(double x, double y, double z, double g)
+	PixelNode(float x, float y, float z, float g)
 	{
 		PixelNode::x = x;
 		PixelNode::y = y;
@@ -22,8 +22,8 @@ public:
 	}
 
 public:
-	double x, y, z, g;
-	double x2, y2, z2, g2;
+	float x, y, z, g;
+	float x2, y2, z2, g2;
 };
 
 class Cluster
@@ -32,7 +32,7 @@ public:
 	void calcEnergy()
 	{
 		unsigned int numPx = static_cast<unsigned int>(pixels.size());
-		double invSize = 1.0 / numPx;
+		float invSize = 1.0f / numPx;
 		for (unsigned int i = 0; i < numPx; i++)
 		{
 			const PixelNode* px = &pixels[i];
@@ -62,11 +62,11 @@ public:
 	// All the edges connected to this cluster
 	std::vector<ClusterPair*> pairs;
 	// double sum of x, y, z, g components and sqr sum
-	double sumX = 0.0;
-	double sumY = 0.0;
-	double sumZ = 0.0;
-	double sumG = 0.0;
-	double sumSqr = 0.0;
+	float sumX = 0.0;
+	float sumY = 0.0;
+	float sumZ = 0.0;
+	float sumG = 0.0;
+	float sumSqr = 0.0;
 	// Energy (Spatial + Color)
-	double energy = 0.0;
+	float energy = 0.0;
 };

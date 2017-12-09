@@ -34,11 +34,11 @@ public:
 	Cluster* p1;
 	Cluster* p2;
 	// Merging cost
-	double dEnergy = 0.0;
-	double energy = 0.0;
-	double sumX = 0.0;
-	double sumY = 0.0;
-	double sumZ = 0.0;
-	double sumG = 0.0;
-	double sumSqr = 0.0;
+	float dEnergy = 0.0;
+	float energy = 0.0;
+	float sumX = 0.0;
+	float sumY = 0.0;
+	float sumZ = 0.0;
+	float sumG = 0.0;
+	float sumSqr = 0.0;
 };

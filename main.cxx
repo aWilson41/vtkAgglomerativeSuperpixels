@@ -12,6 +12,7 @@
 #include <vtkImageCast.h>
 #include <vtkMetaImageReader.h>
 #include <vtkMetaImageWriter.h>
+#include <vtkPNGWriter.h>
 
 // Slider
 #include <vtkSliderWidget.h>
@@ -20,6 +21,10 @@
 #include <vtkProperty2D.h>
 #include <vtkTextProperty.h>
 
+void test3DImage();
+void test2DImage();
+
+// Callback for slider for 3d image tests
 class vtkSliderCallback : public vtkCommand
 {
 public:
@@ -36,18 +41,18 @@ public:
 
 int main(int argc, char* argv[])
 {
+	test2DImage();
+	//test3DImage();
+
+	return EXIT_SUCCESS;
+}
+
+void test2DImage()
+{
 	// Read the 2d png
 	vtkSmartPointer<vtkPNGReader> reader = vtkSmartPointer<vtkPNGReader>::New();
-	//reader->SetFileName("C:/Users/Andx_/Desktop/testing.png");
 	reader->SetFileName("test.png");
 	reader->Update();
-
-	// Read 2d or 3d meta image (mhd)
-	//vtkSmartPointer<vtkMetaImageReader> reader = vtkSmartPointer<vtkMetaImageReader>::New();
-	//reader->SetFileName("C:/Users/Andx_/Desktop/ROI/3DisoFLAIR_sagXYXYThresholded.mhd");
-	////reader->SetFileName("C:/Users/Andx_/Desktop/3DisoFLAIR_sagXY.mhd");
-	////reader->SetFileName("C:/Users/Andx_/Desktop/ROI/3DisoFLAIR_sagGaussian.mhd");
-	//reader->Update();
 
 	// Grab the first component forcing rgb/lab images to grayscale
 	vtkSmartPointer<vtkImageExtractComponents> extractComp = vtkSmartPointer<vtkImageExtractComponents>::New();
@@ -55,10 +60,58 @@ int main(int argc, char* argv[])
 	extractComp->SetComponents(0);
 	extractComp->Update();
 
-	// Cast to uchar in case it's not already uchar
+	// Cast to float in case it's not already float (since my filter only works with float)
 	vtkSmartPointer<vtkImageCast> cast = vtkSmartPointer<vtkImageCast>::New();
 	cast->SetInputData(extractComp->GetOutput());
-	cast->SetOutputScalarTypeToUnsignedChar();
+	cast->SetOutputScalarTypeToFloat();
+	cast->Update();
+
+	// Superpixel segment
+	vtkSmartPointer<vtkSuperpixelFilter> superpixelFilter = vtkSmartPointer<vtkSuperpixelFilter>::New();
+	superpixelFilter->SetInputData(cast->GetOutput());
+	superpixelFilter->SetNumberOfSuperpixels(100);
+	superpixelFilter->SetOutputAvg(true);
+	superpixelFilter->Update();
+
+	// Visualize
+	vtkSmartPointer<vtkImageViewer2> imageViewer = vtkSmartPointer<vtkImageViewer2>::New();
+	vtkSmartPointer<vtkRenderWindowInteractor> renderWindowInteractor = vtkSmartPointer<vtkRenderWindowInteractor>::New();
+	imageViewer->GetRenderWindow()->SetSize(1000, 800);
+	imageViewer->SetInputData(superpixelFilter->GetOutput());
+	imageViewer->GetImageActor()->InterpolateOff();
+	imageViewer->SetupInteractor(renderWindowInteractor);
+
+	// Render image
+	imageViewer->Render();
+	/*imageViewer->GetRenderer()->ResetCamera();
+	imageViewer->Render();*/
+	renderWindowInteractor->Start();
+
+	vtkSmartPointer<vtkPNGWriter> writer = vtkSmartPointer<vtkPNGWriter>::New();
+	writer->SetInputData(superpixelFilter->GetOutput());
+	writer->SetFileName("output.png");
+	writer->Write();
+}
+
+void test3DImage()
+{
+	// Read 2d or 3d meta image (mhd)
+	vtkSmartPointer<vtkMetaImageReader> reader = vtkSmartPointer<vtkMetaImageReader>::New();
+	reader->SetFileName("C:/Users/Andx_/Desktop/ROI/3DisoFLAIR_sagXYXYThresholded.mhd");
+	//reader->SetFileName("C:/Users/Andx_/Desktop/3DisoFLAIR_sagXY.mhd");
+	//reader->SetFileName("C:/Users/Andx_/Desktop/ROI/3DisoFLAIR_sagGaussian.mhd");
+	reader->Update();
+
+	// Grab the first component forcing rgb/lab images to grayscale
+	vtkSmartPointer<vtkImageExtractComponents> extractComp = vtkSmartPointer<vtkImageExtractComponents>::New();
+	extractComp->SetInputData(reader->GetOutput());
+	extractComp->SetComponents(0);
+	extractComp->Update();
+
+	// Cast to float in case it's not already float (since my filter only works with float)
+	vtkSmartPointer<vtkImageCast> cast = vtkSmartPointer<vtkImageCast>::New();
+	cast->SetInputData(extractComp->GetOutput());
+	cast->SetOutputScalarTypeToFloat();
 	cast->Update();
 
 	// Superpixel segment
@@ -72,11 +125,11 @@ int main(int argc, char* argv[])
 	vtkSmartPointer<vtkRenderWindowInteractor> renderWindowInteractor = vtkSmartPointer<vtkRenderWindowInteractor>::New();
 	imageViewer->GetRenderWindow()->SetSize(1000, 800);
 	imageViewer->SetInputData(superpixelFilter->GetOutput());
-	imageViewer->SetSlice(90);
+	imageViewer->SetSlice((imageViewer->GetSliceMax() + imageViewer->GetSliceMin()) / 2); // Set to middle slice
 	imageViewer->GetImageActor()->InterpolateOff();
 	imageViewer->SetupInteractor(renderWindowInteractor);
 
-	#pragma region Setup Slider
+#pragma region Setup Slider
 	vtkSmartPointer<vtkSliderRepresentation2D> sliderRep = vtkSmartPointer<vtkSliderRepresentation2D>::New();
 	sliderRep->SetMinimumValue(0);
 	sliderRep->SetMaximumValue(superpixelFilter->GetOutput()->GetDimensions()[2]);
@@ -99,20 +152,11 @@ int main(int argc, char* argv[])
 	vtkSmartPointer<vtkSliderCallback> callback = vtkSmartPointer<vtkSliderCallback>::New();
 	callback->imageViewer = imageViewer;
 	sliderWidget->AddObserver(vtkCommand::InteractionEvent, callback);
-	#pragma endregion
+#pragma endregion
 
 	// Render image
 	imageViewer->Render();
-	imageViewer->GetRenderer()->ResetCamera();
-	imageViewer->Render();
+	/*imageViewer->GetRenderer()->ResetCamera();
+	imageViewer->Render();*/
 	renderWindowInteractor->Start();
-
-	// Write results
-	vtkSmartPointer<vtkMetaImageWriter> writer = vtkSmartPointer<vtkMetaImageWriter>::New();
-	writer->SetInputData(superpixelFilter->GetOutput());
-	writer->SetFileName("output.mhd");
-	writer->SetRAWFileName("outputRAW.raw");
-	writer->Write();
-
-	return EXIT_SUCCESS;
 }

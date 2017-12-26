@@ -41,8 +41,8 @@ public:
 
 int main(int argc, char* argv[])
 {
-	test2DImage();
-	//test3DImage();
+	//test2DImage();
+	test3DImage();
 
 	return EXIT_SUCCESS;
 }
@@ -70,7 +70,8 @@ void test2DImage()
 	vtkSmartPointer<vtkSuperpixelFilter> superpixelFilter = vtkSmartPointer<vtkSuperpixelFilter>::New();
 	superpixelFilter->SetInputData(cast->GetOutput());
 	superpixelFilter->SetNumberOfSuperpixels(100);
-	superpixelFilter->SetOutputAvg(true);
+	superpixelFilter->SetOutputType(vtkSuperpixelFilter::AVGCOLOR);
+	//superpixelFilter->SetExcludeZero(true);
 	superpixelFilter->Update();
 
 	// Visualize
@@ -103,7 +104,7 @@ void test3DImage()
 {
 	// Read 2d or 3d meta image (mhd)
 	vtkSmartPointer<vtkMetaImageReader> reader = vtkSmartPointer<vtkMetaImageReader>::New();
-	reader->SetFileName("C:/Users/Andx_/Desktop/ROI/3DisoFLAIR_sagXYXYThresholded.mhd");
+	reader->SetFileName("MPRAGE_iso_sag.mhd");
 	//reader->SetFileName("C:/Users/Andx_/Desktop/3DisoFLAIR_sagXY.mhd");
 	//reader->SetFileName("C:/Users/Andx_/Desktop/ROI/3DisoFLAIR_sagGaussian.mhd");
 	reader->Update();
@@ -123,14 +124,20 @@ void test3DImage()
 	// Superpixel segment
 	vtkSmartPointer<vtkSuperpixelFilter> superpixelFilter = vtkSmartPointer<vtkSuperpixelFilter>::New();
 	superpixelFilter->SetInputData(cast->GetOutput());
-	superpixelFilter->SetNumberOfSuperpixels(100);
+	superpixelFilter->SetNumberOfSuperpixels(1000);
+	superpixelFilter->SetOutputType(vtkSuperpixelFilter::RANDRGB);
 	superpixelFilter->Update();
+
+	vtkSmartPointer<vtkImageCast> imageCast = vtkSmartPointer<vtkImageCast>::New();
+	imageCast->SetInputData(superpixelFilter->GetOutput());
+	imageCast->SetOutputScalarTypeToUnsignedChar();
+	imageCast->Update();
 
 	// Visualize
 	vtkSmartPointer<vtkImageViewer2> imageViewer = vtkSmartPointer<vtkImageViewer2>::New();
 	vtkSmartPointer<vtkRenderWindowInteractor> renderWindowInteractor = vtkSmartPointer<vtkRenderWindowInteractor>::New();
 	imageViewer->GetRenderWindow()->SetSize(1000, 800);
-	imageViewer->SetInputData(superpixelFilter->GetOutput());
+	imageViewer->SetInputData(imageCast->GetOutput());
 	imageViewer->SetSlice((imageViewer->GetSliceMax() + imageViewer->GetSliceMin()) / 2); // Set to middle slice
 	imageViewer->GetImageActor()->InterpolateOff();
 	imageViewer->SetupInteractor(renderWindowInteractor);

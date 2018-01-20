@@ -311,6 +311,8 @@ void vtkSuperpixelFilter::calcRandRgb(float* outPtr, int width, int height, int 
 					const unsigned int z = clusters[i].pixels[0].z;
 					const unsigned int index = (x + (y + height * z) * width) * 3;
 					outPtr[index] = 0.0f;
+					outPtr[index + 1] = 0.0f;
+					outPtr[index + 2] = 0.0f;
 				}
 			}
 		}

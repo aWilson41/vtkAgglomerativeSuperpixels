@@ -41,8 +41,8 @@ public:
 
 int main(int argc, char* argv[])
 {
-	//test2DImage();
-	test3DImage();
+	test2DImage();
+	//test3DImage();
 
 	return EXIT_SUCCESS;
 }

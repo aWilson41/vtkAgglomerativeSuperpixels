@@ -121,9 +121,9 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 	if (outputType == AVGCOLOR)
 		calcAvgColors(output);
 	else if (outputType == LABEL)
-			calcColorLabels(output);
+		calcColorLabels(output);
 	else if (outputType == RANDRGB)
-			calcRandRgb(output);
+		calcRandRgb(output);
 
 	// Cleanup
 	delete[] clusters;

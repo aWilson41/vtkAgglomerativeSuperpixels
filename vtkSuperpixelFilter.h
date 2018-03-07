@@ -1,12 +1,12 @@
 #pragma once
-
-#include "ClusterPair.h"
-#include "Cluster.h"
 #include "Mx/MxHeap.h"
 
 #include <vtkImageAlgorithm.h>
 #include <vtkImageData.h>
 #include <vector>
+
+class Cluster;
+class ClusterPair;
 
 class vtkSuperpixelFilter : public vtkImageAlgorithm
 {
@@ -28,8 +28,6 @@ public:
 	vtkSuperpixelFilter() { }
 
 	void SetInputData(vtkImageData* data) { vtkImageAlgorithm::SetInputData(data); }
-	// If set to true zero values won't be included in merging and recieve a label of 0
-	void SetExcludeZero(bool value) { excludeZero = value; }
 	void SetOutputType(OutputType outputType) { vtkSuperpixelFilter::outputType = outputType; }
 	void SetNumberOfSuperpixels(unsigned int numSuperpixels) { vtkSuperpixelFilter::numSuperpixels = numSuperpixels; }
 	// The color is scaled by this when added to the heap
@@ -45,15 +43,12 @@ private: // Template vtk filter code. why?
 	vtkSuperpixelFilter(const vtkSuperpixelFilter&); // Not implemented
 	void operator=(const vtkSuperpixelFilter&); // Not implemented
 
-	unsigned int initClusters(vtkImageData* input);
+	void initClusters(vtkImageData* input);
 	void initHeap(vtkImageData* input);
-	void initHeapExcludeZero(vtkImageData* input);
 	void removeEdges(ClusterPair* pair);
 
 	void calcColorLabels(vtkImageData* output);
-	void calcColorLabelsExcludeZero(vtkImageData* output);
 	void calcRandRgb(vtkImageData* output);
-	void calcRandRgbExcludeZero(vtkImageData* output);
 	void calcAvgColors(vtkImageData* output);
 
 private:

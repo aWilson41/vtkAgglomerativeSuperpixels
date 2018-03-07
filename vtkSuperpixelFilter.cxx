@@ -1,4 +1,6 @@
 #include "vtkSuperpixelFilter.h"
+#include "ClusterPair.h"
+#include "Cluster.h"
 
 #include <vtkObjectFactory.h>
 #include <vtkStreamingDemandDrivenPipeline.h>
@@ -6,6 +8,9 @@
 #include <vtkInformation.h>
 #include <vtkSmartPointer.h>
 #include <algorithm>
+
+// For benchmarking
+#include <chrono>
 
 vtkStandardNewMacro(vtkSuperpixelFilter);
 
@@ -42,9 +47,9 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 		return 1;
 	}
 	unsigned int numPx = dim[0] * dim[1] * dim[2];
-	if (numSuperpixels > numPx)
+	if (numSuperpixels >= numPx)
 	{
-		vtkWarningMacro(<< "Number of superpixels larger than number of pixels.");
+		vtkWarningMacro(<< "Number of superpixels larger than or equal too number of pixels.");
 		return 1;
 	}
 	if (input->GetScalarType() != VTK_FLOAT)
@@ -62,30 +67,22 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 	output->AllocateScalars(outInfo);
 
 	// Creates clusters and heap from input image
-	unsigned int zeroCount = initClusters(input);
-	if (excludeZero)
-	{
-		initHeapExcludeZero(input);
-		numPx -= zeroCount; // This is how many clusters there are, not including zeros
-	}
-	else
-		initHeap(input);
+	initClusters(input);
+	initHeap(input);
 
-	std::clock_t start;
-	double duration = 0.0;
-	start = std::clock();
+	auto start = std::chrono::steady_clock::now();
 
 	unsigned int n = numPx;
 	// For progress
 	unsigned int pxToDecimate = numPx - numSuperpixels;
 	// If exclude 0 is on it may try to continue without anything in the heap
-	while (n > numSuperpixels && minHeap.size() > 0)
+	while (n > numSuperpixels)
 	{
 		// Pull the pair with the least energy
 		ClusterPair* pair = static_cast<ClusterPair*>(minHeap.extract());
 		// Merge cluster2 into cluster1
-		Cluster* c1 = pair->p1;
-		Cluster* c2 = pair->p2;
+		Cluster* c1 = pair->c1;
+		Cluster* c2 = pair->c2;
 
 		// Put all of cluster2's pixels in cluster1
 		c1->pixels.insert(c1->pixels.end(), c2->pixels.begin(), c2->pixels.end());
@@ -120,23 +117,13 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 		UpdateProgress((numPx - n) / static_cast<double>(pxToDecimate));
 	}
 
-	// User has option to output average color of clusters or labeled clusters
+	// User can specify different output options
 	if (outputType == AVGCOLOR)
 		calcAvgColors(output);
 	else if (outputType == LABEL)
-	{
-		if (excludeZero)
-			calcColorLabelsExcludeZero(output);
-		else
 			calcColorLabels(output);
-	}
 	else if (outputType == RANDRGB)
-	{
-		if (excludeZero)
-			calcRandRgbExcludeZero(output);
-		else
 			calcRandRgb(output);
-	}
 
 	// Cleanup
 	delete[] clusters;
@@ -145,8 +132,8 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 		delete minHeap.item(i);
 	}
 
-	duration = (std::clock() - start) / static_cast<double>(CLOCKS_PER_SEC);
-	printf("Time: %f\n", duration);
+	auto end = std::chrono::steady_clock::now();
+	printf("Time: %f\n", std::chrono::duration <double, std::milli>(end - start).count() / 1000.0);
 
 	return 1;
 }
@@ -154,8 +141,8 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 void vtkSuperpixelFilter::removeEdges(ClusterPair* pair)
 {
 	// We will take all of c2's pairs and add them to c1. But first we need to remove a few pairs
-	Cluster* c1 = pair->p1;
-	Cluster* c2 = pair->p2;
+	Cluster* c1 = pair->c1;
+	Cluster* c2 = pair->c2;
 
 	// Remove the current pair from both clusters pair list
 	c1->pairs.erase(std::remove(c1->pairs.begin(), c1->pairs.end(), pair), c1->pairs.end());
@@ -167,11 +154,11 @@ void vtkSuperpixelFilter::removeEdges(ClusterPair* pair)
 		ClusterPair* pair1 = c2->pairs[i];
 		// We know c2 is one of the clusters in the pair. We don't know which one.
 		// If p1 is c2, then change the connection so that it's between c1
-		if (pair1->p1 == c2)
-			pair1->p1 = c1;
+		if (pair1->c1 == c2)
+			pair1->c1 = c1;
 		// If not then p2 is c2, change the connection so that it's between c1
 		else
-			pair1->p2 = c1;
+			pair1->c2 = c1;
 	}
 
 	// Insert all of cluster2's pairs into cluster1
@@ -185,18 +172,18 @@ void vtkSuperpixelFilter::removeEdges(ClusterPair* pair)
 		{
 			ClusterPair* pair2 = c1->pairs[j];
 			// Remove if they point to the same two clusters
-			if ((pair1->p1 == pair2->p1 && pair1->p2 == pair2->p2) ||
-				(pair1->p1 == pair2->p2 && pair1->p2 == pair2->p1))
+			if ((pair1->c1 == pair2->c1 && pair1->c2 == pair2->c2) ||
+				(pair1->c1 == pair2->c2 && pair1->c2 == pair2->c1))
 			{
 				minHeap.remove(pair2);
 
 				// Not only do we need to remove the pair from the minHeap we need to remove the pair from both of it's clusters pair lists
 				c1->pairs.erase(c1->pairs.begin() + j);
 				// If p1 is cl, then we should remove the pair from p2's pair list
-				if (pair2->p1 == c1)
-					pair2->p2->pairs.erase(std::remove(pair2->p2->pairs.begin(), pair2->p2->pairs.end(), pair2), pair2->p2->pairs.end());
+				if (pair2->c1 == c1)
+					pair2->c2->pairs.erase(std::remove(pair2->c2->pairs.begin(), pair2->c2->pairs.end(), pair2), pair2->c2->pairs.end());
 				else // If not, then p2 is c1, so we remove the pair from p1's pair list
-					pair2->p1->pairs.erase(std::remove(pair2->p1->pairs.begin(), pair2->p1->pairs.end(), pair2), pair2->p1->pairs.end());
+					pair2->c1->pairs.erase(std::remove(pair2->c1->pairs.begin(), pair2->c1->pairs.end(), pair2), pair2->c1->pairs.end());
 				j--;
 			}
 		}
@@ -227,46 +214,6 @@ void vtkSuperpixelFilter::calcColorLabels(vtkImageData* output)
 			}
 			// Increment the label
 			g += 1.0f;
-		}
-	}
-}
-
-void vtkSuperpixelFilter::calcColorLabelsExcludeZero(vtkImageData* output)
-{
-	float* outPtr = static_cast<float*>(output->GetScalarPointer());
-	int* dim = output->GetDimensions();
-	float g = 1.0f;
-	// For every cluster
-	for (int i = 0; i < dim[0] * dim[1] * dim[2]; i++)
-	{
-		Cluster* cluster = &clusters[i];
-		// As long as its energy isn't -1 it is still in the heap
-		if (cluster->energy != -1.0f)
-		{
-			// If G is over 0 label it
-			if (cluster->sumG > 0.0f)
-			{
-				// Color every pixel in this cluster this label
-				for (unsigned int j = 0; j < cluster->pixels.size(); j++)
-				{
-					const unsigned int x = cluster->pixels[j].x;
-					const unsigned int y = cluster->pixels[j].y;
-					const unsigned int z = cluster->pixels[j].z;
-					const unsigned int index = x + (y + dim[1] * z) * dim[0];
-					outPtr[index] = g;
-				}
-				// Increment the label
-				g += 1.0f;
-			}
-			else
-			{
-				// If not just set the color of the cluster to 0 since it was never used
-				const unsigned int x = cluster->pixels[0].x;
-				const unsigned int y = cluster->pixels[0].y;
-				const unsigned int z = cluster->pixels[0].z;
-				const unsigned int index = x + (y + dim[1] * z) * dim[0];
-				outPtr[index] = 0.0f;
-			}
 		}
 	}
 }
@@ -323,57 +270,13 @@ void vtkSuperpixelFilter::calcRandRgb(vtkImageData* output)
 	}
 }
 
-void vtkSuperpixelFilter::calcRandRgbExcludeZero(vtkImageData* output)
-{
-	float* outPtr = static_cast<float*>(output->GetScalarPointer());
-	int* dim = output->GetDimensions();
-	// For every cluster
-	for (int i = 0; i < dim[0] * dim[1] * dim[2]; i++)
-	{
-		Cluster* cluster = &clusters[i];
-		// If it is still in the heap
-		if (cluster->energy != -1.0f)
-		{
-			if (cluster->sumG > 0.0f)
-			{
-				// Create a random color and assign it to every pixel in the cluster
-				float r = static_cast<float>(rand() % 255);
-				float g = static_cast<float>(rand() % 255);
-				float b = static_cast<float>(rand() % 255);
-				for (unsigned int j = 0; j < cluster->pixels.size(); j++)
-				{
-					const unsigned int x = cluster->pixels[j].x;
-					const unsigned int y = cluster->pixels[j].y;
-					const unsigned int z = cluster->pixels[j].z;
-					const unsigned int index = (x + (y + dim[1] * z) * dim[0]) * 3;
-					outPtr[index] = r;
-					outPtr[index + 1] = g;
-					outPtr[index + 2] = b;
-				}
-			}
-			else
-			{
-				// If it was never considered in the segmentation then just assign 0
-				const unsigned int x = clusters->pixels[0].x;
-				const unsigned int y = cluster->pixels[0].y;
-				const unsigned int z = cluster->pixels[0].z;
-				const unsigned int index = (x + (y + dim[1] * z) * dim[0]) * 3;
-				outPtr[index] = 0.0f;
-				outPtr[index + 1] = 0.0f;
-				outPtr[index + 2] = 0.0f;
-			}
-		}
-	}
-}
-
-
-unsigned int vtkSuperpixelFilter::initClusters(vtkImageData* input)
+// Sets up all the clusters and calculates their energy. Returns the number of zeros found in the image.
+void vtkSuperpixelFilter::initClusters(vtkImageData* input)
 {
 	float* inPtr = static_cast<float*>(input->GetScalarPointer());
 	int* dim = input->GetDimensions();
 	clusters = new Cluster[dim[0] * dim[1] * dim[2]];
 	int index = 0;
-	unsigned int zeroCount = 0;
 	for (int z = 0; z < dim[2]; z++)
 	{
 		for (int y = 0; y < dim[1]; y++)
@@ -381,8 +284,6 @@ unsigned int vtkSuperpixelFilter::initClusters(vtkImageData* input)
 			for (int x = 0; x < dim[0]; x++)
 			{
 				float g = inPtr[index];
-				if (g <= 0.0f)
-					zeroCount++;
 				// Create a new node
 				PixelNode node(x, y, z, g * colorWeight);
 				// Each cluster is a collection of PixelNodes we start with one cluster for every PixelNode then merge clusters
@@ -394,11 +295,9 @@ unsigned int vtkSuperpixelFilter::initClusters(vtkImageData* input)
 			}
 		}
 	}
-
-	return zeroCount;
 }
 
-// Adds the pairs to the min heap (if 1 is passed in for depth it will only setup 2d connections)
+// Adds the pairs to the min heap
 void vtkSuperpixelFilter::initHeap(vtkImageData* input)
 {
 	int* dim = input->GetDimensions();
@@ -457,79 +356,6 @@ void vtkSuperpixelFilter::initHeap(vtkImageData* input)
 					clusters[index1].addEdge(pair);
 					pair->calcMergingCost();
 					minHeap.insert(pair, -pair->dEnergy);
-				}
-			}
-		}
-	}
-}
-
-void vtkSuperpixelFilter::initHeapExcludeZero(vtkImageData* input)
-{
-	int* dim = input->GetDimensions();
-	int width = dim[0];
-	int height = dim[1];
-	int depth = dim[2];
-	// Add all the horz edges
-	for (int z = 0; z < depth; z++)
-	{
-		for (int y = 0; y < height; y++)
-		{
-			for (int x = 0; x < width - 1; x++)
-			{
-				int index = x + (y + height * z) * width;
-				int index1 = index + 1;
-				if (clusters[index].pixels[0].g > 0.0f && clusters[index1].pixels[0].g > 0.0f)
-				{
-					ClusterPair* pair = new ClusterPair(&clusters[index], &clusters[index1]);
-					clusters[index].addEdge(pair);
-					clusters[index1].addEdge(pair);
-					pair->calcMergingCost();
-					minHeap.insert(pair, -pair->dEnergy);
-				}
-			}
-		}
-	}
-	// Add all the vert edges
-	for (int z = 0; z < depth; z++)
-	{
-		for (int x = 0; x < width; x++)
-		{
-			for (int y = 0; y < height - 1; y++)
-			{
-				int index = x + (y + height * z) * width;
-				int index1 = index + width;
-				if (clusters[index].pixels[0].g > 0.0f && clusters[index1].pixels[0].g > 0.0f)
-				{
-					ClusterPair* pair = new ClusterPair(&clusters[index], &clusters[index1]);
-					clusters[index].addEdge(pair);
-					clusters[index1].addEdge(pair);
-					pair->calcMergingCost();
-					minHeap.insert(pair, -pair->dEnergy);
-				}
-			}
-		}
-	}
-
-	// If depth is 1 then we are working with a 2d image and shouldn't add these pairs
-	if (depth > 1)
-	{
-		// Add all the vert edges
-		for (int x = 0; x < width; x++)
-		{
-			for (int y = 0; y < height; y++)
-			{
-				for (int z = 0; z < depth - 1; z++)
-				{
-					int index = x + (y + height * z) * width;
-					int index1 = index + width * height;
-					if (clusters[index].pixels[0].g > 0.0f && clusters[index1].pixels[0].g > 0.0f)
-					{
-						ClusterPair* pair = new ClusterPair(&clusters[index], &clusters[index1]);
-						clusters[index].addEdge(pair);
-						clusters[index1].addEdge(pair);
-						pair->calcMergingCost();
-						minHeap.insert(pair, -pair->dEnergy);
-					}
 				}
 			}
 		}

@@ -45,13 +45,16 @@ private: // Template vtk filter code. why?
 	vtkSuperpixelFilter(const vtkSuperpixelFilter&); // Not implemented
 	void operator=(const vtkSuperpixelFilter&); // Not implemented
 
-	unsigned int initClusters(float* inPtr, int width, int height, int depth = 1);
-	void initHeap(int width, int height, int depth = 1);
-	void initHeapExcludeZero(int width, int height, int depth = 1);
+	unsigned int initClusters(vtkImageData* input);
+	void initHeap(vtkImageData* input);
+	void initHeapExcludeZero(vtkImageData* input);
 	void removeEdges(ClusterPair* pair);
-	void calcColorLabels(float* outPtr, int width, int height, int depth = 1);
-	void calcRandRgb(float* outPtr, int width, int height, int depth = 1);
-	void calcAvgColors(float* outPtr, int width, int height, int depth = 1);
+
+	void calcColorLabels(vtkImageData* output);
+	void calcColorLabelsExcludeZero(vtkImageData* output);
+	void calcRandRgb(vtkImageData* output);
+	void calcRandRgbExcludeZero(vtkImageData* output);
+	void calcAvgColors(vtkImageData* output);
 
 private:
 	// Min heap of cluster pairs each containing two clusters from the clusters array

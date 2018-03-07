@@ -51,7 +51,7 @@ void test2DImage()
 {
 	// Read the 2d png
 	vtkSmartPointer<vtkPNGReader> reader = vtkSmartPointer<vtkPNGReader>::New();
-	reader->SetFileName("test.png");
+	reader->SetFileName("C:/Users/Andx_/Desktop/image4.png");
 	reader->Update();
 
 	// Grab the first component forcing rgb/lab images to grayscale
@@ -96,7 +96,7 @@ void test2DImage()
 
 	vtkSmartPointer<vtkPNGWriter> writer = vtkSmartPointer<vtkPNGWriter>::New();
 	writer->SetInputData(writeCast->GetOutput());
-	writer->SetFileName("output.png");
+	writer->SetFileName("C:/Users/Andx_/Desktop/spOutput.png");
 	writer->Write();
 }
 

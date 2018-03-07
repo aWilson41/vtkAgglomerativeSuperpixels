@@ -14,9 +14,9 @@ int vtkSuperpixelFilter::RequestInformation(vtkInformation* vtkNotUsed(request),
 	// get the info objects
 	vtkInformation* outInfo = outputVec->GetInformationObject(0);
 	if (outputType == AVGCOLOR || outputType == LABEL)
-		vtkDataObject::SetPointDataActiveScalarInfo(outInfo, 10, 1);
+		vtkDataObject::SetPointDataActiveScalarInfo(outInfo, VTK_FLOAT, 1);
 	else if (outputType == RANDRGB)
-		vtkDataObject::SetPointDataActiveScalarInfo(outInfo, 10, 3);
+		vtkDataObject::SetPointDataActiveScalarInfo(outInfo, VTK_FLOAT, 3);
 	return 1;
 }
 
@@ -41,12 +41,13 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 		vtkWarningMacro(<< "Only grayscale images supported.");
 		return 1;
 	}
-	if (numSuperpixels > static_cast<unsigned int>(dim[0] * dim[1] * dim[2]))
+	unsigned int numPx = dim[0] * dim[1] * dim[2];
+	if (numSuperpixels > numPx)
 	{
 		vtkWarningMacro(<< "Number of superpixels larger than number of pixels.");
 		return 1;
 	}
-	if (input->GetScalarType() != 10)
+	if (input->GetScalarType() != VTK_FLOAT)
 	{
 		vtkWarningMacro(<< "Only float images are supported.");
 		return 1;
@@ -56,31 +57,19 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 	output->SetNumberOfScalarComponents(1, outInfo);
 	if (outputType == RANDRGB)
 		output->SetNumberOfScalarComponents(3, outInfo);
-	output->SetScalarType(10, outInfo); // 10 = float
+	output->SetScalarType(VTK_FLOAT, outInfo);
 	output->SetDimensions(dim);
 	output->AllocateScalars(outInfo);
 
-	// Get the input/output image pointers
-	float* outPtr = static_cast<float*>(output->GetScalarPointer());
-	float* inPtr = static_cast<float*>(input->GetScalarPointer());
-
-	// Get the width, height, and depth (if it's 2d then depth = 1)
-	int width = dim[0];
-	int height = dim[1];
-	int depth = 1;
-	if (numDim == 3)
-		depth = dim[2];
-
 	// Creates clusters and heap from input image
-	unsigned int zeroCount = initClusters(inPtr, width, height, depth);
-	unsigned int numPx = width * height * depth;
+	unsigned int zeroCount = initClusters(input);
 	if (excludeZero)
 	{
-		initHeapExcludeZero(width, height, depth);
+		initHeapExcludeZero(input);
 		numPx -= zeroCount; // This is how many clusters there are, not including zeros
 	}
 	else
-		initHeap(width, height, depth);
+		initHeap(input);
 
 	std::clock_t start;
 	double duration = 0.0;
@@ -89,6 +78,7 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 	unsigned int n = numPx;
 	// For progress
 	unsigned int pxToDecimate = numPx - numSuperpixels;
+	// If exclude 0 is on it may try to continue without anything in the heap
 	while (n > numSuperpixels && minHeap.size() > 0)
 	{
 		// Pull the pair with the least energy
@@ -132,11 +122,21 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
 	// User has option to output average color of clusters or labeled clusters
 	if (outputType == AVGCOLOR)
-		calcAvgColors(outPtr, width, height, depth);
+		calcAvgColors(output);
 	else if (outputType == LABEL)
-		calcColorLabels(outPtr, width, height, depth);
+	{
+		if (excludeZero)
+			calcColorLabelsExcludeZero(output);
+		else
+			calcColorLabels(output);
+	}
 	else if (outputType == RANDRGB)
-		calcRandRgb(outPtr, width, height, depth);
+	{
+		if (excludeZero)
+			calcRandRgbExcludeZero(output);
+		else
+			calcRandRgb(output);
+	}
 
 	// Cleanup
 	delete[] clusters;
@@ -204,155 +204,181 @@ void vtkSuperpixelFilter::removeEdges(ClusterPair* pair)
 }
 
 
-void vtkSuperpixelFilter::calcColorLabels(float* outPtr, int width, int height, int depth)
+void vtkSuperpixelFilter::calcColorLabels(vtkImageData* output)
 {
-	if (excludeZero)
+	float* outPtr = static_cast<float*>(output->GetScalarPointer());
+	int* dim = output->GetDimensions();
+	// For every cluster
+	float g = 0.0f;
+	for (int i = 0; i < dim[0] * dim[1] * dim[2]; i++)
 	{
-		// For every cluster set a unique color
-		float g = 1.0f;
-		for (int i = 0; i < width * height * depth; i++)
+		Cluster* cluster = &clusters[i];
+		// As long as its energy isn't -1 it is still in the heap
+		if (cluster->energy != -1.0f)
 		{
-			if (clusters[i].energy != -1.0f)
+			// Color every pixel in this cluster this label
+			for (unsigned int j = 0; j < cluster->pixels.size(); j++)
 			{
-				if (clusters[i].sumG > 0.0f)
-				{
-					for (unsigned int j = 0; j < clusters[i].pixels.size(); j++)
-					{
-						const unsigned int x = clusters[i].pixels[j].x;
-						const unsigned int y = clusters[i].pixels[j].y;
-						const unsigned int z = clusters[i].pixels[j].z;
-						const unsigned int index = x + (y + height * z) * width;
-						outPtr[index] = g;
-					}
-					g += 1.0f;
-				}
-				else
-				{
-					const unsigned int x = clusters[i].pixels[0].x;
-					const unsigned int y = clusters[i].pixels[0].y;
-					const unsigned int z = clusters[i].pixels[0].z;
-					const unsigned int index = x + (y + height * z) * width;
-					outPtr[index] = 0.0f;
-				}
+				const unsigned int x = cluster->pixels[j].x;
+				const unsigned int y = cluster->pixels[j].y;
+				const unsigned int z = cluster->pixels[j].z;
+				const unsigned int index = x + (y + dim[1] * z) * dim[0];
+				outPtr[index] = g;
 			}
+			// Increment the label
+			g += 1.0f;
 		}
 	}
-	else
+}
+
+void vtkSuperpixelFilter::calcColorLabelsExcludeZero(vtkImageData* output)
+{
+	float* outPtr = static_cast<float*>(output->GetScalarPointer());
+	int* dim = output->GetDimensions();
+	float g = 1.0f;
+	// For every cluster
+	for (int i = 0; i < dim[0] * dim[1] * dim[2]; i++)
 	{
-		// For every cluster set a unique color
-		float g = 0.0f;
-		for (int i = 0; i < width * height * depth; i++)
+		Cluster* cluster = &clusters[i];
+		// As long as its energy isn't -1 it is still in the heap
+		if (cluster->energy != -1.0f)
 		{
-			if (clusters[i].energy != -1.0f)
+			// If G is over 0 label it
+			if (cluster->sumG > 0.0f)
 			{
-				for (unsigned int j = 0; j < clusters[i].pixels.size(); j++)
+				// Color every pixel in this cluster this label
+				for (unsigned int j = 0; j < cluster->pixels.size(); j++)
 				{
-					const unsigned int x = clusters[i].pixels[j].x;
-					const unsigned int y = clusters[i].pixels[j].y;
-					const unsigned int z = clusters[i].pixels[j].z;
-					const unsigned int index = x + (y + height * z) * width;
+					const unsigned int x = cluster->pixels[j].x;
+					const unsigned int y = cluster->pixels[j].y;
+					const unsigned int z = cluster->pixels[j].z;
+					const unsigned int index = x + (y + dim[1] * z) * dim[0];
 					outPtr[index] = g;
 				}
+				// Increment the label
 				g += 1.0f;
+			}
+			else
+			{
+				// If not just set the color of the cluster to 0 since it was never used
+				const unsigned int x = cluster->pixels[0].x;
+				const unsigned int y = cluster->pixels[0].y;
+				const unsigned int z = cluster->pixels[0].z;
+				const unsigned int index = x + (y + dim[1] * z) * dim[0];
+				outPtr[index] = 0.0f;
 			}
 		}
 	}
 }
 
-void vtkSuperpixelFilter::calcAvgColors(float* outPtr, int width, int height, int depth)
+void vtkSuperpixelFilter::calcAvgColors(vtkImageData* output)
 {
+	float* outPtr = static_cast<float*>(output->GetScalarPointer());
+	int* dim = output->GetDimensions();
 	// For every cluster set a unique color
-	for (int i = 0; i < width * height * depth; i++)
+	for (int i = 0; i < dim[0] * dim[1] * dim[2]; i++)
 	{
-		if (clusters[i].energy != -1.0f)
+		Cluster* cluster = &clusters[i];
+		if (cluster->energy != -1.0f)
 		{
-			float avg = clusters[i].sumG / clusters[i].pixels.size();
-			for (unsigned int j = 0; j < clusters[i].pixels.size(); j++)
+			float avg = cluster->sumG / cluster->pixels.size();
+			for (unsigned int j = 0; j < cluster->pixels.size(); j++)
 			{
-				const unsigned int x = clusters[i].pixels[j].x;
-				const unsigned int y = clusters[i].pixels[j].y;
-				const unsigned int z = clusters[i].pixels[j].z;
-				const unsigned int index = x + (y + height * z) * width;
+				const unsigned int x = cluster->pixels[j].x;
+				const unsigned int y = cluster->pixels[j].y;
+				const unsigned int z = cluster->pixels[j].z;
+				const unsigned int index = x + (y + dim[1] * z) * dim[0];
 				outPtr[index] = avg;
 			}
 		}
 	}
 }
 
-void vtkSuperpixelFilter::calcRandRgb(float* outPtr, int width, int height, int depth)
+void vtkSuperpixelFilter::calcRandRgb(vtkImageData* output)
 {
-	if (excludeZero)
+	float* outPtr = static_cast<float*>(output->GetScalarPointer());
+	int* dim = output->GetDimensions();
+	// For every cluster set a random rgb color
+	for (int i = 0; i < dim[0] * dim[1] * dim[2]; i++)
 	{
-		// For every cluster set a random rgb color
-		for (int i = 0; i < width * height * depth; i++)
+		Cluster* cluster = &clusters[i];
+		// If it is still in the heap
+		if (cluster->energy != -1.0f)
 		{
-			if (clusters[i].energy != -1.0f)
+			// Create a random color and assign it to every pixel in the cluster
+			float r = static_cast<float>(rand() % 255);
+			float g = static_cast<float>(rand() % 255);
+			float b = static_cast<float>(rand() % 255);
+			for (unsigned int j = 0; j < cluster->pixels.size(); j++)
 			{
-				if (clusters[i].sumG > 0.0f)
-				{
-					float r = static_cast<float>(rand() % 255);
-					float g = static_cast<float>(rand() % 255);
-					float b = static_cast<float>(rand() % 255);
-					for (unsigned int j = 0; j < clusters[i].pixels.size(); j++)
-					{
-						const unsigned int x = clusters[i].pixels[j].x;
-						const unsigned int y = clusters[i].pixels[j].y;
-						const unsigned int z = clusters[i].pixels[j].z;
-						const unsigned int index = (x + (y + height * z) * width) * 3;
-						outPtr[index] = r;
-						outPtr[index + 1] = g;
-						outPtr[index + 2] = b;
-					}
-				}
-				else
-				{
-					const unsigned int x = clusters[i].pixels[0].x;
-					const unsigned int y = clusters[i].pixels[0].y;
-					const unsigned int z = clusters[i].pixels[0].z;
-					const unsigned int index = (x + (y + height * z) * width) * 3;
-					outPtr[index] = 0.0f;
-					outPtr[index + 1] = 0.0f;
-					outPtr[index + 2] = 0.0f;
-				}
+				const unsigned int x = cluster->pixels[j].x;
+				const unsigned int y = cluster->pixels[j].y;
+				const unsigned int z = cluster->pixels[j].z;
+				const unsigned int index = (x + (y + dim[1] * z) * dim[0]) * 3;
+				outPtr[index] = r;
+				outPtr[index + 1] = g;
+				outPtr[index + 2] = b;
 			}
 		}
 	}
-	else
+}
+
+void vtkSuperpixelFilter::calcRandRgbExcludeZero(vtkImageData* output)
+{
+	float* outPtr = static_cast<float*>(output->GetScalarPointer());
+	int* dim = output->GetDimensions();
+	// For every cluster
+	for (int i = 0; i < dim[0] * dim[1] * dim[2]; i++)
 	{
-		// For every cluster set a random rgb color
-		for (int i = 0; i < width * height * depth; i++)
+		Cluster* cluster = &clusters[i];
+		// If it is still in the heap
+		if (cluster->energy != -1.0f)
 		{
-			if (clusters[i].energy != -1.0f)
+			if (cluster->sumG > 0.0f)
 			{
+				// Create a random color and assign it to every pixel in the cluster
 				float r = static_cast<float>(rand() % 255);
 				float g = static_cast<float>(rand() % 255);
 				float b = static_cast<float>(rand() % 255);
-				for (unsigned int j = 0; j < clusters[i].pixels.size(); j++)
+				for (unsigned int j = 0; j < cluster->pixels.size(); j++)
 				{
-					const unsigned int x = clusters[i].pixels[j].x;
-					const unsigned int y = clusters[i].pixels[j].y;
-					const unsigned int z = clusters[i].pixels[j].z;
-					const unsigned int index = (x + (y + height * z) * width) * 3;
+					const unsigned int x = cluster->pixels[j].x;
+					const unsigned int y = cluster->pixels[j].y;
+					const unsigned int z = cluster->pixels[j].z;
+					const unsigned int index = (x + (y + dim[1] * z) * dim[0]) * 3;
 					outPtr[index] = r;
 					outPtr[index + 1] = g;
 					outPtr[index + 2] = b;
 				}
+			}
+			else
+			{
+				// If it was never considered in the segmentation then just assign 0
+				const unsigned int x = clusters->pixels[0].x;
+				const unsigned int y = cluster->pixels[0].y;
+				const unsigned int z = cluster->pixels[0].z;
+				const unsigned int index = (x + (y + dim[1] * z) * dim[0]) * 3;
+				outPtr[index] = 0.0f;
+				outPtr[index + 1] = 0.0f;
+				outPtr[index + 2] = 0.0f;
 			}
 		}
 	}
 }
 
 
-unsigned int vtkSuperpixelFilter::initClusters(float* inPtr, int width, int height, int depth)
+unsigned int vtkSuperpixelFilter::initClusters(vtkImageData* input)
 {
-	clusters = new Cluster[width * height * depth];
+	float* inPtr = static_cast<float*>(input->GetScalarPointer());
+	int* dim = input->GetDimensions();
+	clusters = new Cluster[dim[0] * dim[1] * dim[2]];
 	int index = 0;
 	unsigned int zeroCount = 0;
-	for (int z = 0; z < depth; z++)
+	for (int z = 0; z < dim[2]; z++)
 	{
-		for (int y = 0; y < height; y++)
+		for (int y = 0; y < dim[1]; y++)
 		{
-			for (int x = 0; x < width; x++)
+			for (int x = 0; x < dim[0]; x++)
 			{
 				float g = inPtr[index];
 				if (g <= 0.0f)
@@ -373,8 +399,12 @@ unsigned int vtkSuperpixelFilter::initClusters(float* inPtr, int width, int heig
 }
 
 // Adds the pairs to the min heap (if 1 is passed in for depth it will only setup 2d connections)
-void vtkSuperpixelFilter::initHeap(int width, int height, int depth)
+void vtkSuperpixelFilter::initHeap(vtkImageData* input)
 {
+	int* dim = input->GetDimensions();
+	int width = dim[0];
+	int height = dim[1];
+	int depth = dim[2];
 	// Add all the horz edges
 	for (int z = 0; z < depth; z++)
 	{
@@ -433,8 +463,12 @@ void vtkSuperpixelFilter::initHeap(int width, int height, int depth)
 	}
 }
 
-void vtkSuperpixelFilter::initHeapExcludeZero(int width, int height, int depth)
+void vtkSuperpixelFilter::initHeapExcludeZero(vtkImageData* input)
 {
+	int* dim = input->GetDimensions();
+	int width = dim[0];
+	int height = dim[1];
+	int depth = dim[2];
 	// Add all the horz edges
 	for (int z = 0; z < depth; z++)
 	{
@@ -477,7 +511,7 @@ void vtkSuperpixelFilter::initHeapExcludeZero(int width, int height, int depth)
 	}
 
 	// If depth is 1 then we are working with a 2d image and shouldn't add these pairs
-	if (depth != 1)
+	if (depth > 1)
 	{
 		// Add all the vert edges
 		for (int x = 0; x < width; x++)

@@ -57,9 +57,7 @@ private:
 	// Clusters array containing every cluster
 	Cluster* clusters;
 	unsigned int numSuperpixels = 0;
-	double colorWeight = 1.0;
-	// If this flag is turned on then 0's are ignored.
-	bool excludeZero = false;
+	float colorWeight = 1.0f;
 	OutputType outputType = LABEL;
 	bool swap = false;
 };

@@ -52,28 +52,26 @@ void test2DImage()
 {
 	// Read the 2d png
 	vtkSmartPointer<vtkPNGReader> reader = vtkSmartPointer<vtkPNGReader>::New();
-	reader->SetFileName("C:/Users/Andx_/Desktop/image.png");
+	reader->SetFileName("C:/Users/Andrew/Desktop/image.png");
 	reader->Update();
-
-	// Grab the first component forcing rgb/lab images to grayscale
-	/*vtkSmartPointer<vtkImageExtractComponents> extractComp = vtkSmartPointer<vtkImageExtractComponents>::New();
-	extractComp->SetInputData(reader->GetOutput());
-	extractComp->SetComponents(0);
-	extractComp->Update();*/
-
-	vtkSmartPointer<vtkImageLuminance> toGrayScale = vtkSmartPointer<vtkImageLuminance>::New();
-	toGrayScale->SetInputData(reader->GetOutput());
-	toGrayScale->Update();
-
 	// Cast to float in case it's not already float (since my filter only works with float)
 	vtkSmartPointer<vtkImageCast> cast = vtkSmartPointer<vtkImageCast>::New();
-	cast->SetInputData(toGrayScale->GetOutput());
+	cast->SetInputData(reader->GetOutput());
 	cast->SetOutputScalarTypeToFloat();
 	cast->Update();
 
+	vtkSmartPointer<vtkImageData> input = cast->GetOutput();
+	if (input->GetNumberOfScalarComponents() > 1)
+	{
+		vtkSmartPointer<vtkImageLuminance> toGrayScale = vtkSmartPointer<vtkImageLuminance>::New();
+		toGrayScale->SetInputData(cast->GetOutput());
+		toGrayScale->Update();
+		input = toGrayScale->GetOutput();
+	}
+
 	// Superpixel segment
 	vtkSmartPointer<vtkSuperpixelFilter> superpixelFilter = vtkSmartPointer<vtkSuperpixelFilter>::New();
-	superpixelFilter->SetInputData(cast->GetOutput());
+	superpixelFilter->SetInputData(input);
 	superpixelFilter->SetNumberOfSuperpixels(25);
 	superpixelFilter->SetOutputType(vtkSuperpixelFilter::AVGCOLOR);
 	superpixelFilter->Update();
@@ -100,7 +98,7 @@ void test2DImage()
 
 	vtkSmartPointer<vtkPNGWriter> writer = vtkSmartPointer<vtkPNGWriter>::New();
 	writer->SetInputData(writeCast->GetOutput());
-	writer->SetFileName("C:/Users/Andx_/Desktop/spOutput.png");
+	writer->SetFileName("C:/Users/Andrew/Desktop/spOutput.png");
 	writer->Write();
 }
 

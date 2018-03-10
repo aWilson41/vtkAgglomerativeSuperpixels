@@ -7,6 +7,8 @@ class ClusterPair;
 class PixelNode
 {
 public:
+	PixelNode() { }
+
 	PixelNode(float x, float y, float z, float g)
 	{
 		PixelNode::x = x;
@@ -20,7 +22,8 @@ public:
 	float y = -1.0f;
 	float z = -1.0f;
 	float g = -1.0f;
-	bool borderPixel = false;
+	bool boundaryPx = false;
+	Cluster* parent;
 };
 
 class Cluster

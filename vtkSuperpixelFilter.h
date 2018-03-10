@@ -7,6 +7,7 @@
 
 class Cluster;
 class ClusterPair;
+class PixelNode;
 
 class vtkSuperpixelFilter : public vtkImageAlgorithm
 {
@@ -51,13 +52,19 @@ private: // Template vtk filter code. why?
 	void calcRandRgb(vtkImageData* output);
 	void calcAvgColors(vtkImageData* output);
 
+	void computeSwap(int width, int height, int depth);
+	float calcSwapCost(Cluster* c1, Cluster* c2, PixelNode* px);
+
 private:
 	// Min heap of cluster pairs each containing two clusters from the clusters array
 	MxHeap minHeap;
-	// Clusters array containing every cluster
+	// Clusters array containing every cluster made
 	Cluster* clusters;
+	// Points to all the resulting clusters (subset of clusters)
+	std::vector<Cluster*> finalClusters;
+	PixelNode* px;
+	OutputType outputType = LABEL;
 	unsigned int numSuperpixels = 0;
 	float colorWeight = 1.0f;
-	OutputType outputType = LABEL;
 	bool swap = false;
 };

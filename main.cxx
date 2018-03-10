@@ -52,7 +52,7 @@ void test2DImage()
 {
 	// Read the 2d png
 	vtkSmartPointer<vtkPNGReader> reader = vtkSmartPointer<vtkPNGReader>::New();
-	reader->SetFileName("C:/Users/Andx_/Desktop/boatSmall.png");
+	reader->SetFileName("C:/Users/Andx_/Desktop/image.png");
 	reader->Update();
 
 	// Grab the first component forcing rgb/lab images to grayscale
@@ -74,7 +74,7 @@ void test2DImage()
 	// Superpixel segment
 	vtkSmartPointer<vtkSuperpixelFilter> superpixelFilter = vtkSmartPointer<vtkSuperpixelFilter>::New();
 	superpixelFilter->SetInputData(cast->GetOutput());
-	superpixelFilter->SetNumberOfSuperpixels(500);
+	superpixelFilter->SetNumberOfSuperpixels(25);
 	superpixelFilter->SetOutputType(vtkSuperpixelFilter::AVGCOLOR);
 	superpixelFilter->Update();
 

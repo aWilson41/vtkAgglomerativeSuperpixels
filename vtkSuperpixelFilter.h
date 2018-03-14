@@ -29,13 +29,13 @@ public:
 	vtkSuperpixelFilter() { }
 
 	void SetInputData(vtkImageData* data) { vtkImageAlgorithm::SetInputData(data); }
-	void SetOutputType(OutputType outputType) { vtkSuperpixelFilter::outputType = outputType; }
-	void SetNumberOfSuperpixels(unsigned int numSuperpixels) { vtkSuperpixelFilter::numSuperpixels = numSuperpixels; }
+	void SetOutputType(OutputType outputType) { vtkSuperpixelFilter::outputType = outputType; this->Modified(); }
+	void SetNumberOfSuperpixels(unsigned int numSuperpixels) { vtkSuperpixelFilter::numSuperpixels = numSuperpixels; this->Modified(); }
 	// The color is scaled by this when added to the heap
-	void SetWeight(double weight) { colorWeight = weight; }
+	void SetWeight(double weight) { colorWeight = weight; this->Modified(); }
 	// If set to true the output will be swapped
-	void SetSwap(bool value) { swap = value; }
-	void SetSwapIterations(int iter) { swapIterations = iter; }
+	void SetSwap(bool value) { swap = value; this->Modified(); }
+	void SetSwapIterations(unsigned int iter) { swapIterations = iter; this->Modified(); }
 
 protected:
 	int RequestInformation(vtkInformation* request, vtkInformationVector** inputVec, vtkInformationVector* outputVec) VTK_OVERRIDE;
@@ -53,19 +53,21 @@ private: // Template vtk filter code. why?
 	void calcRandRgb(vtkImageData* output);
 	void calcAvgColors(vtkImageData* output);
 
+	// Returns the largest change in energy of the swaps made
 	void computeSwap(int width, int height, int depth);
 
 private:
 	// Min heap of cluster pairs each containing two clusters from the clusters array
-	MxHeap minHeap;
+	MxHeap* minHeap;
 	// Clusters array containing every cluster made
 	Cluster* clusters;
 	// Points to all the resulting clusters (subset of clusters)
 	std::vector<Cluster*> finalClusters;
 	PixelNode* px;
+
 	OutputType outputType = LABEL;
 	unsigned int numSuperpixels = 0;
 	float colorWeight = 1.0f;
 	bool swap = false;
-	int swapIterations = 1;
+	unsigned int swapIterations = 3;
 };

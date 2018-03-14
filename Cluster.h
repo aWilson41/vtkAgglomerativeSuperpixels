@@ -22,7 +22,6 @@ public:
 	float y = -1.0f;
 	float z = -1.0f;
 	float g = -1.0f;
-	bool boundaryPx = false;
 	Cluster* parent;
 };
 
@@ -32,6 +31,7 @@ public:
 	void calcEnergy()
 	{
 		unsigned int numPx = static_cast<unsigned int>(pixels.size());
+		sumX = sumY = sumZ = sumG = sumSqr = 0.0f;
 		for (unsigned int i = 0; i < numPx; i++)
 		{
 			const PixelNode* px = pixels[i];

@@ -1,6 +1,7 @@
 #include "vtkSuperpixelFilter.h"
 #include "ClusterPair.h"
 #include "Cluster.h"
+#include "Swap.h"
 
 #include <vtkObjectFactory.h>
 #include <vtkStreamingDemandDrivenPipeline.h>
@@ -11,86 +12,6 @@
 
 // For benchmarking
 #include <chrono>
-
-class Swap
-{
-public:
-	Swap()
-	{
-		cost = std::numeric_limits<float>::max();
-	}
-	Swap(Cluster* c1, Cluster* c2, PixelNode* px)
-	{
-		Swap::c1 = c1;
-		Swap::c2 = c2;
-		Swap::px = px;
-		cost = std::numeric_limits<float>::max();
-	}
-
-	void calcSwapCost()
-	{
-		float pxSumSqr = px->x * px->x + px->y * px->y + px->z * px->z + px->g * px->g;
-		// The energy of c1 if we removed px
-		postSumXC1 = c1->sumX - px->x;
-		postSumYC1 = c1->sumY - px->y;
-		postSumZC1 = c1->sumZ - px->z;
-		postSumGC1 = c1->sumG - px->g;
-		postSumSqrC1 = c1->sumSqr - pxSumSqr;
-		postEnergyC1 = postSumSqrC1 - (postSumXC1 * postSumXC1 + postSumYC1 * postSumYC1 + postSumZC1 * postSumZC1 + postSumGC1 * postSumGC1) / (c1->pixels.size() - 1);
-		// The energy of c2 if we added px
-		postSumXC2 = c2->sumX + px->x;
-		postSumYC2 = c2->sumY + px->y;
-		postSumZC2 = c2->sumZ + px->z;
-		postSumGC2 = c2->sumG + px->g;
-		postSumSqrC2 = c2->sumSqr + pxSumSqr;
-		postEnergyC2 = postSumSqrC2 - (postSumXC2 * postSumXC2 + postSumYC2 * postSumYC2 + postSumZC2 * postSumZC2 + postSumGC2 * postSumGC2) / (c2->pixels.size() + 1);
-
-		cost = postEnergyC1 + postEnergyC2 - c1->energy - c2->energy;
-	}
-
-	// Swaps the px from c1 to c2 changing the energy
-	void swap()
-	{
-		// Remove pointer to swapPx from c1
-		c1->pixels.erase(std::remove(c1->pixels.begin(), c1->pixels.end(), px), c1->pixels.end());
-		// Add swapPx to c2
-		c2->pixels.push_back(px);
-		// Update the energies of the clusters
-		c1->energy = postEnergyC1;
-		c1->sumX = postSumXC1;
-		c1->sumY = postSumYC1;
-		c1->sumZ = postSumZC1;
-		c1->sumG = postSumGC1;
-		c1->sumSqr = postSumSqrC1;
-
-		c2->energy = postEnergyC2;
-		c2->sumX = postSumXC2;
-		c2->sumY = postSumYC2;
-		c2->sumZ = postSumZC2;
-		c2->sumG = postSumGC2;
-		c2->sumSqr = postSumSqrC2;
-	}
-
-public:
-	Cluster* c1;
-	Cluster* c2;
-	PixelNode* px;
-	float cost;
-
-	float postEnergyC1;
-	float postSumXC1 = 0.0f;
-	float postSumYC1 = 0.0f;
-	float postSumZC1 = 0.0f;
-	float postSumGC1 = 0.0f;
-	float postSumSqrC1 = 0.0f;
-
-	float postEnergyC2;
-	float postSumXC2 = 0.0f;
-	float postSumYC2 = 0.0f;
-	float postSumZC2 = 0.0f;
-	float postSumGC2 = 0.0f;
-	float postSumSqrC2 = 0.0f;
-};
 
 vtkStandardNewMacro(vtkSuperpixelFilter);
 
@@ -127,9 +48,9 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 		return 1;
 	}
 	unsigned int numPx = dim[0] * dim[1] * dim[2];
-	if (numSuperpixels >= numPx)
+	if (numSuperpixels >= numPx || numSuperpixels <= 0)
 	{
-		vtkWarningMacro(<< "Number of superpixels larger than or equal too number of pixels.");
+		vtkWarningMacro(<< "Invalid number of superpixles.");
 		return 1;
 	}
 	if (input->GetScalarType() != VTK_FLOAT)
@@ -162,7 +83,7 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 	while (n > numSuperpixels)
 	{
 		// Pull the pair with the least energy
-		ClusterPair* pair = static_cast<ClusterPair*>(minHeap.extract());
+		ClusterPair* pair = static_cast<ClusterPair*>(minHeap->extract());
 		// Merge cluster2 into cluster1
 		Cluster* c1 = pair->c1;
 		Cluster* c2 = pair->c2;
@@ -186,7 +107,7 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 		{
 			c1->pairs[i]->calcMergingCost();
 			c1->pairs[i]->heap_key(-c1->pairs[i]->dEnergy);
-			minHeap.update(c1->pairs[i]);
+			minHeap->update(c1->pairs[i]);
 		}
 
 		// Mark the cluster as removed from the heap
@@ -201,6 +122,7 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 	}
 
 	// Extract a vector of clusters that are still valid
+	finalClusters.clear();
 	finalClusters.resize(numSuperpixels);
 	unsigned int index = 0;
 	for (unsigned int i = 0; i < numPx; i++)
@@ -228,13 +150,14 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 	// Cleanup
 	delete[] clusters;
 	delete[] px;
-	for (unsigned int i = 0; i < minHeap.size(); i++)
+	for (unsigned int i = 0; i < minHeap->size(); i++)
 	{
-		delete minHeap.item(i);
+		delete minHeap->item(i);
 	}
+	delete minHeap;
 
 	auto end = std::chrono::steady_clock::now();
-	printf("Time: %f\n", std::chrono::duration <double, std::milli>(end - start).count() / 1000.0);
+	printf("Time: %f\n", std::chrono::duration<double, std::milli>(end - start).count() / 1000.0);
 
 	return 1;
 }
@@ -276,7 +199,7 @@ void vtkSuperpixelFilter::removeEdges(ClusterPair* pair)
 			if ((pair1->c1 == pair2->c1 && pair1->c2 == pair2->c2) ||
 				(pair1->c1 == pair2->c2 && pair1->c2 == pair2->c1))
 			{
-				minHeap.remove(pair2);
+				minHeap->remove(pair2);
 
 				// Not only do we need to remove the pair from the minHeap we need to remove the pair from both of it's clusters pair lists
 				c1->pairs.erase(c1->pairs.begin() + j);
@@ -300,6 +223,7 @@ void vtkSuperpixelFilter::computeSwap(int width, int height, int depth)
 		{
 			finalClusters[i]->pixels[j]->parent = finalClusters[i];
 		}
+		finalClusters[i]->calcEnergy();
 	}
 
 	std::vector<Swap> swaps;
@@ -336,6 +260,7 @@ void vtkSuperpixelFilter::computeSwap(int width, int height, int depth)
 							// Create a new potential swap
 							Swap newSwap = Swap(c1, c2, swapPx);
 							newSwap.calcSwapCost();
+							// If the cost is smaller and the px we want to swap hasn't already been reassigned
 							if (newSwap.cost < minSwap.cost)
 								minSwap = newSwap;
 						}
@@ -347,7 +272,7 @@ void vtkSuperpixelFilter::computeSwap(int width, int height, int depth)
 			}
 		}
 	}
-	// After computing all potential cluster swaps
+	// Do all the swaps
 	for (int i = 0; i < swaps.size(); i++)
 	{
 		swaps[i].swap();
@@ -454,6 +379,7 @@ void vtkSuperpixelFilter::initClusters(vtkImageData* input)
 // Adds the pairs to the min heap
 void vtkSuperpixelFilter::initHeap(vtkImageData* input)
 {
+	minHeap = new MxHeap();
 	int* dim = input->GetDimensions();
 	int width = dim[0];
 	int height = dim[1];
@@ -471,7 +397,7 @@ void vtkSuperpixelFilter::initHeap(vtkImageData* input)
 				clusters[index].addEdge(pair);
 				clusters[index1].addEdge(pair);
 				pair->calcMergingCost();
-				minHeap.insert(pair, -pair->dEnergy);
+				minHeap->insert(pair, -pair->dEnergy);
 			}
 		}
 	}
@@ -488,7 +414,7 @@ void vtkSuperpixelFilter::initHeap(vtkImageData* input)
 				clusters[index].addEdge(pair);
 				clusters[index1].addEdge(pair);
 				pair->calcMergingCost();
-				minHeap.insert(pair, -pair->dEnergy);
+				minHeap->insert(pair, -pair->dEnergy);
 			}
 		}
 	}
@@ -509,7 +435,7 @@ void vtkSuperpixelFilter::initHeap(vtkImageData* input)
 					clusters[index].addEdge(pair);
 					clusters[index1].addEdge(pair);
 					pair->calcMergingCost();
-					minHeap.insert(pair, -pair->dEnergy);
+					minHeap->insert(pair, -pair->dEnergy);
 				}
 			}
 		}

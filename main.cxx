@@ -52,7 +52,7 @@ void test2DImage()
 {
 	// Read the 2d png
 	vtkSmartPointer<vtkPNGReader> reader = vtkSmartPointer<vtkPNGReader>::New();
-	reader->SetFileName("C:/Users/Andrew/Desktop/image.png");
+	reader->SetFileName("C:/Users/Andx_/Desktop/image.png");
 	reader->Update();
 	// Cast to float in case it's not already float (since my filter only works with float)
 	vtkSmartPointer<vtkImageCast> cast = vtkSmartPointer<vtkImageCast>::New();
@@ -73,6 +73,7 @@ void test2DImage()
 	vtkSmartPointer<vtkSuperpixelFilter> superpixelFilter = vtkSmartPointer<vtkSuperpixelFilter>::New();
 	superpixelFilter->SetInputData(input);
 	superpixelFilter->SetNumberOfSuperpixels(25);
+	superpixelFilter->SetSwap(true);
 	superpixelFilter->SetOutputType(vtkSuperpixelFilter::AVGCOLOR);
 	superpixelFilter->Update();
 
@@ -98,7 +99,7 @@ void test2DImage()
 
 	vtkSmartPointer<vtkPNGWriter> writer = vtkSmartPointer<vtkPNGWriter>::New();
 	writer->SetInputData(writeCast->GetOutput());
-	writer->SetFileName("C:/Users/Andrew/Desktop/spOutput.png");
+	writer->SetFileName("C:/Users/Andx_/Desktop/spOutput.png");
 	writer->Write();
 }
 

@@ -233,105 +233,65 @@ void vtkSuperpixelFilter::computeSwap(int width, int height, int depth)
 			finalClusters[i]->pixels[j].parent = finalClusters[i];
 		}
 	}
-	struct Swaps
+	struct Swap
 	{
 		Cluster* c1;
 		Cluster* c2;
 		PixelNode* px;
 		float cost;
-		Swaps(Cluster* c1, Cluster* c2, PixelNode* px, float cost)
+		Swap() { }
+		Swap(float cost) { Swap::cost = cost; }
+		Swap(Cluster* c1, Cluster* c2, PixelNode* px, float cost)
 		{
-			Swaps::c1 = c1;
-			Swaps::c2 = c2;
-			Swaps::px = px;
-			Swaps::cost = cost;
+			Swap::c1 = c1;
+			Swap::c2 = c2;
+			Swap::px = px;
+			Swap::cost = cost;
 		}
 	};
-	std::vector<Swaps> swaps;
+	std::vector<Swap> swaps;
 
-	// Edge loop
-	// Compute edge swap cost of horz edges if they lie on the border of two clusters
+	// Calc the cost of swapping every border pixel to it's axial neighbors
+	const unsigned int neighborhood[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+	//int a = width * height;
+	const unsigned int neighborShift[4] = { 1, -1, width, -width };
 	for (int z = 0; z < depth; z++)
 	{
 		for (int y = 0; y < height; y++)
 		{
-			for (int x = 0; x < width - 1; x++)
+			for (int x = 0; x < width; x++)
 			{
-				int index = x + (y + height * z) * width;
-				int index1 = index + 1;
-				Cluster* c1 = px[index].parent;
-				Cluster* c2 = px[index1].parent;
-				// If the parents are different this is a border edge
-				if (c1 != c2)
+				// Find a neighbor cluster to swap too with the min cost
+				int i = x + (y + height * z) * width;
+				Cluster* c1 = px[i].parent;
+				Swap minSwap(std::numeric_limits<float>::max());
+				// For every neighbor
+				for (unsigned int j = 0; j < 4; j++)
 				{
-					// Cost of moving px[index] from c1->c2
-					float cost1 = calcSwapCost(c1, c2, &px[index]);
-					if (cost1 < 0.0f)
-						swaps.push_back(Swaps(c1, c2, &px[index], cost1));
-					// Cost of moving px[index1] from c2->C1
-					float cost2 = calcSwapCost(c2, c1, &px[index1]);
-					if (cost2 < 0.0f)
-						swaps.push_back(Swaps(c2, c1, &px[index1], cost2));
-				}
-			}
-		}
-	}
-	// Compute edge swap cost of vert edges if they lie on the border of two clusters
-	for (int z = 0; z < depth; z++)
-	{
-		for (int x = 0; x < width; x++)
-		{
-			for (int y = 0; y < height - 1; y++)
-			{
-				int index = x + (y + height * z) * width;
-				int index1 = index + width;
-				Cluster* c1 = px[index].parent;
-				Cluster* c2 = px[index1].parent;
-				// If the parents are different this is a border edge
-				if (c1 != c2)
-				{
-					// Cost of moving px[index] from c1->c2
-					float cost1 = calcSwapCost(c1, c2, &px[index]);
-					if (cost1 < 0.0f)
-						swaps.push_back(Swaps(c1, c2, &px[index], cost1));
-					// Cost of moving px[index1] from c2->C1
-					float cost2 = calcSwapCost(c2, c1, &px[index1]);
-					if (cost2 < 0.0f)
-						swaps.push_back(Swaps(c2, c1, &px[index1], cost2));
-				}
-			}
-		}
-	}
-	// If depth is 1 then we are working with a 2d image and shouldn't add these pairs
-	if (depth != 1)
-	{
-		// Compute edge swap cost of depth edges if they lie on the border of two clusters
-		for (int x = 0; x < width; x++)
-		{
-			for (int y = 0; y < height; y++)
-			{
-				for (int z = 0; z < depth - 1; z++)
-				{
-					int index = x + (y + height * z) * width;
-					int index1 = index + width * height;
-					Cluster* c1 = px[index].parent;
-					Cluster* c2 = px[index1].parent;
-					// If the parents are different this is a border edge
-					if (c1 != c2)
+					unsigned int xp = x + neighborhood[j][0];
+					unsigned int yp = y + neighborhood[j][1];
+					// Check bounds
+					if (xp >= 0 && yp >= 0 && xp < width && yp < height)
 					{
-						// Cost of moving px[index] from c1->c2
-						float cost1 = calcSwapCost(c1, c2, &px[index]);
-						if (cost1 < 0.0f)
-							swaps.push_back(Swaps(c1, c2, &px[index], cost1));
-						// Cost of moving px[index1] from c2->C1
-						float cost2 = calcSwapCost(c2, c1, &px[index1]);
-						if (cost2 < 0.0f)
-							swaps.push_back(Swaps(c2, c1, &px[index1], cost2));
+						PixelNode* px = &px[i + neighborShift[j]];
+						Cluster* c2 = px->parent;
+						// If the two pixels belong too different clusters
+						if (c1 != c2)
+						{
+							// Consider a swap
+							float cost = calcSwapCost(c1, c2, px);
+							if (cost < minSwap.cost)
+								minSwap = Swap(c1, c2, px, cost);
+						}
 					}
 				}
+				// As long as the min swap reduces the energy then it's valid
+				if (minSwap.cost < 0.0f)
+					swaps.push_back(minSwap);
 			}
 		}
 	}
+	// After computing
 }
 
 

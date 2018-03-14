@@ -34,7 +34,7 @@ public:
 		unsigned int numPx = static_cast<unsigned int>(pixels.size());
 		for (unsigned int i = 0; i < numPx; i++)
 		{
-			const PixelNode* px = &pixels[i];
+			const PixelNode* px = pixels[i];
 			sumX += px->x;
 			sumY += px->y;
 			sumZ += px->z;
@@ -57,7 +57,7 @@ public:
 
 public:
 	// All the pixels in this cluster
-	std::vector<PixelNode> pixels;
+	std::vector<PixelNode*> pixels;
 	// All the edges connected to this cluster
 	std::vector<ClusterPair*> pairs;
 	// double sum of x, y, z, g components and sqr sum

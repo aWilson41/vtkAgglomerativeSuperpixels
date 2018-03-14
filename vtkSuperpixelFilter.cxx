@@ -12,6 +12,86 @@
 // For benchmarking
 #include <chrono>
 
+class Swap
+{
+public:
+	Swap()
+	{
+		cost = std::numeric_limits<float>::max();
+	}
+	Swap(Cluster* c1, Cluster* c2, PixelNode* px)
+	{
+		Swap::c1 = c1;
+		Swap::c2 = c2;
+		Swap::px = px;
+		cost = std::numeric_limits<float>::max();
+	}
+
+	void calcSwapCost()
+	{
+		float pxSumSqr = px->x * px->x + px->y * px->y + px->z * px->z + px->g * px->g;
+		// The energy of c1 if we removed px
+		postSumXC1 = c1->sumX - px->x;
+		postSumYC1 = c1->sumY - px->y;
+		postSumZC1 = c1->sumZ - px->z;
+		postSumGC1 = c1->sumG - px->g;
+		postSumSqrC1 = c1->sumSqr - pxSumSqr;
+		postEnergyC1 = postSumSqrC1 - (postSumXC1 * postSumXC1 + postSumYC1 * postSumYC1 + postSumZC1 * postSumZC1 + postSumGC1 * postSumGC1) / (c1->pixels.size() - 1);
+		// The energy of c2 if we added px
+		postSumXC2 = c2->sumX + px->x;
+		postSumYC2 = c2->sumY + px->y;
+		postSumZC2 = c2->sumZ + px->z;
+		postSumGC2 = c2->sumG + px->g;
+		postSumSqrC2 = c2->sumSqr + pxSumSqr;
+		postEnergyC2 = postSumSqrC2 - (postSumXC2 * postSumXC2 + postSumYC2 * postSumYC2 + postSumZC2 * postSumZC2 + postSumGC2 * postSumGC2) / (c2->pixels.size() + 1);
+
+		cost = postEnergyC1 + postEnergyC2 - c1->energy - c2->energy;
+	}
+
+	// Swaps the px from c1 to c2 changing the energy
+	void swap()
+	{
+		// Remove pointer to swapPx from c1
+		c1->pixels.erase(std::remove(c1->pixels.begin(), c1->pixels.end(), px), c1->pixels.end());
+		// Add swapPx to c2
+		c2->pixels.push_back(px);
+		// Update the energies of the clusters
+		c1->energy = postEnergyC1;
+		c1->sumX = postSumXC1;
+		c1->sumY = postSumYC1;
+		c1->sumZ = postSumZC1;
+		c1->sumG = postSumGC1;
+		c1->sumSqr = postSumSqrC1;
+
+		c2->energy = postEnergyC2;
+		c2->sumX = postSumXC2;
+		c2->sumY = postSumYC2;
+		c2->sumZ = postSumZC2;
+		c2->sumG = postSumGC2;
+		c2->sumSqr = postSumSqrC2;
+	}
+
+public:
+	Cluster* c1;
+	Cluster* c2;
+	PixelNode* px;
+	float cost;
+
+	float postEnergyC1;
+	float postSumXC1 = 0.0f;
+	float postSumYC1 = 0.0f;
+	float postSumZC1 = 0.0f;
+	float postSumGC1 = 0.0f;
+	float postSumSqrC1 = 0.0f;
+
+	float postEnergyC2;
+	float postSumXC2 = 0.0f;
+	float postSumYC2 = 0.0f;
+	float postSumZC2 = 0.0f;
+	float postSumGC2 = 0.0f;
+	float postSumSqrC2 = 0.0f;
+};
+
 vtkStandardNewMacro(vtkSuperpixelFilter);
 
 int vtkSuperpixelFilter::RequestInformation(vtkInformation* vtkNotUsed(request), vtkInformationVector** vtkNotUsed(inputVec), vtkInformationVector* outputVec)
@@ -21,7 +101,7 @@ int vtkSuperpixelFilter::RequestInformation(vtkInformation* vtkNotUsed(request),
 	if (outputType == AVGCOLOR || outputType == LABEL)
 		vtkDataObject::SetPointDataActiveScalarInfo(outInfo, VTK_FLOAT, 1);
 	else if (outputType == RANDRGB)
-		vtkDataObject::SetPointDataActiveScalarInfo(outInfo, VTK_FLOAT, 3);
+		vtkDataObject::SetPointDataActiveScalarInfo(outInfo, VTK_UNSIGNED_CHAR, 3);
 	return 1;
 }
 
@@ -60,9 +140,12 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 	// Set the information
 	output->SetExtent(outInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT()));
 	output->SetNumberOfScalarComponents(1, outInfo);
-	if (outputType == RANDRGB)
-		output->SetNumberOfScalarComponents(3, outInfo);
 	output->SetScalarType(VTK_FLOAT, outInfo);
+	if (outputType == RANDRGB)
+	{
+		output->SetNumberOfScalarComponents(3, outInfo);
+		output->SetScalarType(VTK_UNSIGNED_CHAR, outInfo);
+	}
 	output->SetDimensions(dim);
 	output->AllocateScalars(outInfo);
 
@@ -126,6 +209,14 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 			finalClusters[index++] = &clusters[i];
 	}
 
+	if (swap)
+	{
+		for (unsigned int i = 0; i < swapIterations; i++)
+		{
+			computeSwap(dim[0], dim[1], dim[2]);
+		}
+	}
+
 	// User can specify different output options
 	if (outputType == AVGCOLOR)
 		calcAvgColors(output);
@@ -133,9 +224,6 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 		calcColorLabels(output);
 	else if (outputType == RANDRGB)
 		calcRandRgb(output);
-
-	if (swap)
-		computeSwap(dim[0], dim[1], dim[2]);
 
 	// Cleanup
 	delete[] clusters;
@@ -203,85 +291,53 @@ void vtkSuperpixelFilter::removeEdges(ClusterPair* pair)
 	}
 }
 
-float vtkSuperpixelFilter::calcSwapCost(Cluster* c1, Cluster* c2, PixelNode* px)
-{
-	float pxSumSqr = px->x * px->x + px->y * px->y + px->z * px->z + px->g * px->g;
-	// The energy of c1 if we removed px
-	float postC1X = c1->sumX - px->x;
-	float postC1Y = c1->sumY - px->y;
-	float postC1Z = c1->sumZ - px->z;
-	float postC1G = c1->sumG - px->g;
-	float postEnergyC1 = (c1->sumSqr - pxSumSqr) - (postC1X * postC1X + postC1Y * postC1Y + postC1Z * postC1Z + postC1G * postC1G) / (c1->pixels.size() - 1);
-	// The energy of c2 if we added px
-	float postC2X = c2->sumX + px->x;
-	float postC2Y = c2->sumY + px->y;
-	float postC2Z = c2->sumZ + px->z;
-	float postC2G = c2->sumG + px->g;
-	float postEnergyC2 = (c2->sumSqr + pxSumSqr) - (postC2X * postC2X + postC2Y * postC2Y + postC2Z * postC2Z + postC2G * postC2G) / (c2->pixels.size() + 1);
-
-	return postEnergyC1 + postEnergyC2 - c1->energy - c2->energy;
-}
-
-// The current solution works, but a pixel could neighbor two superpixels, get swapped into one, and the other still be in the vec of possible swaps
 void vtkSuperpixelFilter::computeSwap(int width, int height, int depth)
 {
-	// Setup parentage for the clusters
+	// Setup parentage for the clusters so every pixel in the image knows what cluster it is apart of
 	for (unsigned int i = 0; i < finalClusters.size(); i++)
 	{
 		for (unsigned int j = 0; j < finalClusters[i]->pixels.size(); j++)
 		{
-			finalClusters[i]->pixels[j].parent = finalClusters[i];
+			finalClusters[i]->pixels[j]->parent = finalClusters[i];
 		}
 	}
-	struct Swap
-	{
-		Cluster* c1;
-		Cluster* c2;
-		PixelNode* px;
-		float cost;
-		Swap() { }
-		Swap(float cost) { Swap::cost = cost; }
-		Swap(Cluster* c1, Cluster* c2, PixelNode* px, float cost)
-		{
-			Swap::c1 = c1;
-			Swap::c2 = c2;
-			Swap::px = px;
-			Swap::cost = cost;
-		}
-	};
+
 	std::vector<Swap> swaps;
 
-	// Calc the cost of swapping every border pixel to it's axial neighbors
-	const unsigned int neighborhood[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+	// Neighborhood iteration
+	const int neighborhood[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
 	//int a = width * height;
-	const unsigned int neighborShift[4] = { 1, -1, width, -width };
+	const int neighborShift[4] = { 1, -1, width, -width };
+	// Calc the cost of swapping every border pixel to it's axial neighbors
 	for (int z = 0; z < depth; z++)
 	{
 		for (int y = 0; y < height; y++)
 		{
 			for (int x = 0; x < width; x++)
 			{
-				// Find a neighbor cluster to swap too with the min cost
+				// Find a neighbor cluster to swap this pixel too with the min cost
 				int i = x + (y + height * z) * width;
-				Cluster* c1 = px[i].parent;
-				Swap minSwap(std::numeric_limits<float>::max());
+				PixelNode* swapPx = &px[i];
+				Cluster* c1 = swapPx->parent;
+				Swap minSwap;
 				// For every neighbor
 				for (unsigned int j = 0; j < 4; j++)
 				{
-					unsigned int xp = x + neighborhood[j][0];
-					unsigned int yp = y + neighborhood[j][1];
+					int xp = x + neighborhood[j][0];
+					int yp = y + neighborhood[j][1];
 					// Check bounds
 					if (xp >= 0 && yp >= 0 && xp < width && yp < height)
 					{
-						PixelNode* px = &px[i + neighborShift[j]];
-						Cluster* c2 = px->parent;
+						PixelNode* neighborPx = &px[i + neighborShift[j]];
+						Cluster* c2 = neighborPx->parent;
 						// If the two pixels belong too different clusters
 						if (c1 != c2)
 						{
-							// Consider a swap
-							float cost = calcSwapCost(c1, c2, px);
-							if (cost < minSwap.cost)
-								minSwap = Swap(c1, c2, px, cost);
+							// Create a new potential swap
+							Swap newSwap = Swap(c1, c2, swapPx);
+							newSwap.calcSwapCost();
+							if (newSwap.cost < minSwap.cost)
+								minSwap = newSwap;
 						}
 					}
 				}
@@ -291,7 +347,11 @@ void vtkSuperpixelFilter::computeSwap(int width, int height, int depth)
 			}
 		}
 	}
-	// After computing
+	// After computing all potential cluster swaps
+	for (int i = 0; i < swaps.size(); i++)
+	{
+		swaps[i].swap();
+	}
 }
 
 
@@ -307,9 +367,9 @@ void vtkSuperpixelFilter::calcColorLabels(vtkImageData* output)
 		// Color every pixel in this cluster this label
 		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
 		{
-			const unsigned int x = cluster->pixels[j].x;
-			const unsigned int y = cluster->pixels[j].y;
-			const unsigned int z = cluster->pixels[j].z;
+			const unsigned int x = cluster->pixels[j]->x;
+			const unsigned int y = cluster->pixels[j]->y;
+			const unsigned int z = cluster->pixels[j]->z;
 			const unsigned int index = x + (y + dim[1] * z) * dim[0];
 			outPtr[index] = g;
 		}
@@ -329,9 +389,9 @@ void vtkSuperpixelFilter::calcAvgColors(vtkImageData* output)
 		float avg = cluster->sumG / cluster->pixels.size();
 		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
 		{
-			const unsigned int x = cluster->pixels[j].x;
-			const unsigned int y = cluster->pixels[j].y;
-			const unsigned int z = cluster->pixels[j].z;
+			const unsigned int x = cluster->pixels[j]->x;
+			const unsigned int y = cluster->pixels[j]->y;
+			const unsigned int z = cluster->pixels[j]->z;
 			const unsigned int index = x + (y + dim[1] * z) * dim[0];
 			outPtr[index] = avg;
 		}
@@ -340,21 +400,21 @@ void vtkSuperpixelFilter::calcAvgColors(vtkImageData* output)
 
 void vtkSuperpixelFilter::calcRandRgb(vtkImageData* output)
 {
-	float* outPtr = static_cast<float*>(output->GetScalarPointer());
+	unsigned char* outPtr = static_cast<unsigned char*>(output->GetScalarPointer());
 	int* dim = output->GetDimensions();
 	// For every cluster set a random rgb color
 	for (int i = 0; i < finalClusters.size(); i++)
 	{
 		Cluster* cluster = finalClusters[i];
 		// Create a random color and assign it to every pixel in the cluster
-		float r = static_cast<float>(rand() % 255);
-		float g = static_cast<float>(rand() % 255);
-		float b = static_cast<float>(rand() % 255);
+		float r = static_cast<unsigned char>(rand() % 255);
+		float g = static_cast<unsigned char>(rand() % 255);
+		float b = static_cast<unsigned char>(rand() % 255);
 		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
 		{
-			const unsigned int x = cluster->pixels[j].x;
-			const unsigned int y = cluster->pixels[j].y;
-			const unsigned int z = cluster->pixels[j].z;
+			const unsigned int x = cluster->pixels[j]->x;
+			const unsigned int y = cluster->pixels[j]->y;
+			const unsigned int z = cluster->pixels[j]->z;
 			const unsigned int index = (x + (y + dim[1] * z) * dim[0]) * 3;
 			outPtr[index] = r;
 			outPtr[index + 1] = g;
@@ -383,7 +443,7 @@ void vtkSuperpixelFilter::initClusters(vtkImageData* input)
 				px[index] = PixelNode(x, y, z, inPtr[index] * colorWeight);
 				clusters[index] = Cluster();
 				// Add the pixel to the cluster
-				clusters[index].pixels.push_back(px[index]);
+				clusters[index].pixels.push_back(&px[index]);
 				clusters[index].calcEnergy();
 				index++;
 			}

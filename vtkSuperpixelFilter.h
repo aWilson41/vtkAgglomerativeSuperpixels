@@ -35,6 +35,7 @@ public:
 	void SetWeight(double weight) { colorWeight = weight; }
 	// If set to true the output will be swapped
 	void SetSwap(bool value) { swap = value; }
+	void SetSwapIterations(int iter) { swapIterations = iter; }
 
 protected:
 	int RequestInformation(vtkInformation* request, vtkInformationVector** inputVec, vtkInformationVector* outputVec) VTK_OVERRIDE;
@@ -53,7 +54,6 @@ private: // Template vtk filter code. why?
 	void calcAvgColors(vtkImageData* output);
 
 	void computeSwap(int width, int height, int depth);
-	float calcSwapCost(Cluster* c1, Cluster* c2, PixelNode* px);
 
 private:
 	// Min heap of cluster pairs each containing two clusters from the clusters array
@@ -67,4 +67,5 @@ private:
 	unsigned int numSuperpixels = 0;
 	float colorWeight = 1.0f;
 	bool swap = false;
+	int swapIterations = 1;
 };

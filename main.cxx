@@ -29,7 +29,7 @@ void test2DImage();
 vtkSmartPointer<vtkImageViewer2> imageViewer;
 vtkSmartPointer<vtkSuperpixelFilter> superpixelFilter;
 int numIter = 33;
-int numSuperpixels = 500;
+int numSuperpixels = 152500;
 
 // Callback for slider for 3d image tests
 //class vtkSliderCallback : public vtkCommand
@@ -100,7 +100,7 @@ void test2DImage()
 {
 	// Read the 2d png
 	vtkSmartPointer<vtkPNGReader> reader = vtkSmartPointer<vtkPNGReader>::New();
-	reader->SetFileName("C:/Users/Andx_/Desktop/8049.png");
+	reader->SetFileName("C:/Users/Andx_/Desktop/image3.png");
 	reader->Update();
 	// Cast to float in case it's not already float (since my filter only works with float)
 	vtkSmartPointer<vtkImageCast> cast = vtkSmartPointer<vtkImageCast>::New();
@@ -118,12 +118,12 @@ void test2DImage()
 	}
 
 	// Superpixel segment
+	numSuperpixels = input->GetDimensions()[0] * input->GetDimensions()[1] - 1;
 	superpixelFilter = vtkSmartPointer<vtkSuperpixelFilter>::New();
 	superpixelFilter->SetInputData(input);
-	superpixelFilter->SetNumberOfSuperpixels(numSuperpixels);
-	superpixelFilter->SetSwap(true);
-	superpixelFilter->SetSwapIterations(numIter);
-	superpixelFilter->SetOutputType(vtkSuperpixelFilter::AVGCOLOR);
+	superpixelFilter->SetNumberOfSuperpixels(2000);
+	superpixelFilter->SetSwapIterations(60);
+	superpixelFilter->SetOutputType(vtkSuperpixelFilter::MINCOLOR);
 	superpixelFilter->Update();
 
 	// Visualize
@@ -138,6 +138,16 @@ void test2DImage()
 	// Render image
 	imageViewer->Render();
 	renderWindowInteractor->Start();
+
+	// To write the image as png we cast to uchar
+	vtkSmartPointer<vtkImageCast> writeCast = vtkSmartPointer<vtkImageCast>::New();
+	writeCast->SetInputData(superpixelFilter->GetOutput());
+	writeCast->SetOutputScalarTypeToUnsignedChar();
+	writeCast->Update();
+	vtkSmartPointer<vtkPNGWriter> writer = vtkSmartPointer<vtkPNGWriter>::New();
+	writer->SetInputData(writeCast->GetOutput());
+	writer->SetFileName("C:/Users/Andx_/Desktop/spdiv.png");
+	writer->Write();
 }
 
 //void test3DImage()

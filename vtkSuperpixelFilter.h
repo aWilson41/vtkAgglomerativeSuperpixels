@@ -19,7 +19,9 @@ public:
 	{
 		LABEL,
 		RANDRGB,
-		AVGCOLOR
+		AVGCOLOR,
+		MAXCOLOR,
+		MINCOLOR
 	};
 
 public:
@@ -30,12 +32,13 @@ public:
 
 	void SetInputData(vtkImageData* data) { vtkImageAlgorithm::SetInputData(data); }
 	void SetOutputType(OutputType outputType) { vtkSuperpixelFilter::outputType = outputType; this->Modified(); }
-	void SetNumberOfSuperpixels(unsigned int numSuperpixels) { vtkSuperpixelFilter::numSuperpixels = numSuperpixels; this->Modified(); }
+	vtkSetMacro(NumberOfSuperpixels, unsigned int);
+	vtkGetMacro(NumberOfSuperpixels, unsigned int);
+	vtkSetMacro(SwapIterations, unsigned int);
+	vtkGetMacro(SwapIterations, unsigned int);
 	// The color is scaled by this when added to the heap
-	void SetWeight(double weight) { colorWeight = weight; this->Modified(); }
-	// If set to true the output will be swapped
-	void SetSwap(bool value) { swap = value; this->Modified(); }
-	void SetSwapIterations(unsigned int iter) { swapIterations = iter; this->Modified(); }
+	vtkSetMacro(ColorWeight, double);
+	vtkGetMacro(ColorWeight, double);
 
 protected:
 	int RequestInformation(vtkInformation* request, vtkInformationVector** inputVec, vtkInformationVector* outputVec) VTK_OVERRIDE;
@@ -52,6 +55,8 @@ private: // Template vtk filter code. why?
 	void calcColorLabels(vtkImageData* output);
 	void calcRandRgb(vtkImageData* output);
 	void calcAvgColors(vtkImageData* output);
+	void calcMaxColors(vtkImageData* output);
+	void calcMinColors(vtkImageData* output);
 
 	// Returns the largest change in energy of the swaps made
 	void computeSwap(int width, int height, int depth);
@@ -66,8 +71,7 @@ private:
 	PixelNode* px;
 
 	OutputType outputType = LABEL;
-	unsigned int numSuperpixels = 0;
-	float colorWeight = 1.0f;
-	bool swap = false;
-	unsigned int swapIterations = 3;
+	unsigned int NumberOfSuperpixels = 0;
+	double ColorWeight = 1.0f;
+	unsigned int SwapIterations = 0;
 };

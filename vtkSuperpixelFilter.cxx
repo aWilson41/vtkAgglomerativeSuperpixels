@@ -48,7 +48,7 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 		return 1;
 	}
 	unsigned int numPx = dim[0] * dim[1] * dim[2];
-	if (numSuperpixels >= numPx || numSuperpixels <= 0)
+	if (NumberOfSuperpixels >= numPx || NumberOfSuperpixels <= 0)
 	{
 		vtkWarningMacro(<< "Invalid number of superpixles.");
 		return 1;
@@ -78,9 +78,9 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
 	unsigned int n = numPx;
 	// For progress
-	unsigned int pxToDecimate = numPx - numSuperpixels;
+	unsigned int pxToDecimate = numPx - NumberOfSuperpixels;
 	// If exclude 0 is on it may try to continue without anything in the heap
-	while (n > numSuperpixels)
+	while (n > NumberOfSuperpixels)
 	{
 		// Pull the pair with the least energy
 		ClusterPair* pair = static_cast<ClusterPair*>(minHeap->extract());
@@ -123,7 +123,7 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
 	// Extract a vector of clusters that are still valid
 	finalClusters.clear();
-	finalClusters.resize(numSuperpixels);
+	finalClusters.resize(NumberOfSuperpixels);
 	unsigned int index = 0;
 	for (unsigned int i = 0; i < numPx; i++)
 	{
@@ -131,21 +131,23 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 			finalClusters[index++] = &clusters[i];
 	}
 
-	if (swap)
+	// Perform swap optimization
+	for (unsigned int i = 0; i < SwapIterations; i++)
 	{
-		for (unsigned int i = 0; i < swapIterations; i++)
-		{
-			computeSwap(dim[0], dim[1], dim[2]);
-		}
+		computeSwap(dim[0], dim[1], dim[2]);
 	}
 
 	// User can specify different output options
-	if (outputType == AVGCOLOR)
-		calcAvgColors(output);
-	else if (outputType == LABEL)
+	if (outputType == LABEL)
 		calcColorLabels(output);
 	else if (outputType == RANDRGB)
 		calcRandRgb(output);
+	else if (outputType == AVGCOLOR)
+		calcAvgColors(output);
+	else if (outputType == MAXCOLOR)
+		calcMaxColors(output);
+	else if (outputType == MINCOLOR)
+		calcMinColors(output);
 
 	// Cleanup
 	delete[] clusters;
@@ -303,26 +305,6 @@ void vtkSuperpixelFilter::calcColorLabels(vtkImageData* output)
 	}
 }
 
-void vtkSuperpixelFilter::calcAvgColors(vtkImageData* output)
-{
-	float* outPtr = static_cast<float*>(output->GetScalarPointer());
-	int* dim = output->GetDimensions();
-	// For every cluster set a unique color
-	for (int i = 0; i < finalClusters.size(); i++)
-	{
-		Cluster* cluster = finalClusters[i];
-		float avg = cluster->sumG / cluster->pixels.size();
-		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
-		{
-			const unsigned int x = cluster->pixels[j]->x;
-			const unsigned int y = cluster->pixels[j]->y;
-			const unsigned int z = cluster->pixels[j]->z;
-			const unsigned int index = x + (y + dim[1] * z) * dim[0];
-			outPtr[index] = avg;
-		}
-	}
-}
-
 void vtkSuperpixelFilter::calcRandRgb(vtkImageData* output)
 {
 	unsigned char* outPtr = static_cast<unsigned char*>(output->GetScalarPointer());
@@ -348,6 +330,73 @@ void vtkSuperpixelFilter::calcRandRgb(vtkImageData* output)
 	}
 }
 
+void vtkSuperpixelFilter::calcAvgColors(vtkImageData* output)
+{
+	float* outPtr = static_cast<float*>(output->GetScalarPointer());
+	int* dim = output->GetDimensions();
+	// For every cluster set a unique color
+	for (int i = 0; i < finalClusters.size(); i++)
+	{
+		Cluster* cluster = finalClusters[i];
+		float avg = cluster->sumG / cluster->pixels.size();
+		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
+		{
+			const unsigned int x = cluster->pixels[j]->x;
+			const unsigned int y = cluster->pixels[j]->y;
+			const unsigned int z = cluster->pixels[j]->z;
+			outPtr[x + (y + dim[1] * z) * dim[0]] = avg;
+		}
+	}
+}
+
+void vtkSuperpixelFilter::calcMaxColors(vtkImageData* output)
+{
+	float* outPtr = static_cast<float*>(output->GetScalarPointer());
+	int* dim = output->GetDimensions();
+	// For every cluster set a unique color
+	for (int i = 0; i < finalClusters.size(); i++)
+	{
+		Cluster* cluster = finalClusters[i];
+		float max = VTK_FLOAT_MIN;
+		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
+		{
+			if (cluster->pixels[j]->g > max)
+				max = cluster->pixels[j]->g;
+		}
+		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
+		{
+			const unsigned int x = cluster->pixels[j]->x;
+			const unsigned int y = cluster->pixels[j]->y;
+			const unsigned int z = cluster->pixels[j]->z;
+			outPtr[x + (y + dim[1] * z) * dim[0]] = max;
+		}
+	}
+}
+
+void vtkSuperpixelFilter::calcMinColors(vtkImageData* output)
+{
+	float* outPtr = static_cast<float*>(output->GetScalarPointer());
+	int* dim = output->GetDimensions();
+	// For every cluster set a unique color
+	for (int i = 0; i < finalClusters.size(); i++)
+	{
+		Cluster* cluster = finalClusters[i];
+		float min = VTK_FLOAT_MAX;
+		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
+		{
+			if (cluster->pixels[j]->g < min)
+				min = cluster->pixels[j]->g;
+		}
+		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
+		{
+			const unsigned int x = cluster->pixels[j]->x;
+			const unsigned int y = cluster->pixels[j]->y;
+			const unsigned int z = cluster->pixels[j]->z;
+			outPtr[x + (y + dim[1] * z) * dim[0]] = min;
+		}
+	}
+}
+
 
 // Sets up all the clusters and calculates their energy. Returns the number of zeros found in the image.
 void vtkSuperpixelFilter::initClusters(vtkImageData* input)
@@ -365,7 +414,7 @@ void vtkSuperpixelFilter::initClusters(vtkImageData* input)
 			for (int x = 0; x < dim[0]; x++)
 			{
 				// Each cluster is a collection of PixelNodes we start with one cluster for every PixelNode then merge clusters
-				px[index] = PixelNode(x, y, z, inPtr[index] * colorWeight);
+				px[index] = PixelNode(x, y, z, inPtr[index] * ColorWeight);
 				clusters[index] = Cluster();
 				// Add the pixel to the cluster
 				clusters[index].pixels.push_back(&px[index]);

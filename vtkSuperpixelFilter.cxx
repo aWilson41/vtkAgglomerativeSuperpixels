@@ -2,12 +2,13 @@
 #include "ClusterPair.h"
 #include "Cluster.h"
 #include "Swap.h"
+#include "PixelNode.h"
+#include "Mx/MxHeap.h"
 
 #include <vtkObjectFactory.h>
 #include <vtkStreamingDemandDrivenPipeline.h>
 #include <vtkInformationVector.h>
 #include <vtkInformation.h>
-#include <vtkSmartPointer.h>
 #include <algorithm>
 
 // For benchmarking
@@ -72,7 +73,7 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
 	// Creates clusters and heap from input image
 	initClusters(input);
-	initHeap(input);
+	MxHeap* minHeap = createHeap(input);
 
 	auto start = std::chrono::steady_clock::now();
 
@@ -100,7 +101,7 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 		c1->energy = pair->energy;
 
 		// Remove bad edges (duplicates/etc)
-		removeEdges(pair);
+		removeEdges(minHeap, pair);
 
 		// Every edge of cluster1 should have energy updated
 		for (unsigned int i = 0; i < c1->pairs.size(); i++)
@@ -122,13 +123,13 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 	}
 
 	// Extract a vector of clusters that are still valid
-	finalClusters.clear();
-	finalClusters.resize(NumberOfSuperpixels);
+	outputClusters.clear();
+	outputClusters.resize(NumberOfSuperpixels);
 	unsigned int index = 0;
 	for (unsigned int i = 0; i < numPx; i++)
 	{
 		if (clusters[i].energy != -1.0f)
-			finalClusters[index++] = &clusters[i];
+			outputClusters[index++] = &clusters[i];
 	}
 
 	// Perform swap optimization
@@ -164,7 +165,7 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 	return 1;
 }
 
-void vtkSuperpixelFilter::removeEdges(ClusterPair* pair)
+void vtkSuperpixelFilter::removeEdges(MxHeap* minHeap, ClusterPair* pair)
 {
 	// We will take all of c2's pairs and add them to c1. But first we need to remove a few pairs
 	Cluster* c1 = pair->c1;
@@ -219,13 +220,13 @@ void vtkSuperpixelFilter::removeEdges(ClusterPair* pair)
 void vtkSuperpixelFilter::computeSwap(int width, int height, int depth)
 {
 	// Setup parentage for the clusters so every pixel in the image knows what cluster it is apart of
-	for (unsigned int i = 0; i < finalClusters.size(); i++)
+	for (unsigned int i = 0; i < outputClusters.size(); i++)
 	{
-		for (unsigned int j = 0; j < finalClusters[i]->pixels.size(); j++)
+		for (unsigned int j = 0; j < outputClusters[i]->pixels.size(); j++)
 		{
-			finalClusters[i]->pixels[j]->parent = finalClusters[i];
+			outputClusters[i]->pixels[j]->parent = outputClusters[i];
 		}
-		finalClusters[i]->calcEnergy();
+		outputClusters[i]->calcEnergy();
 	}
 
 	std::vector<Swap> swaps;
@@ -288,17 +289,16 @@ void vtkSuperpixelFilter::calcColorLabels(vtkImageData* output)
 	int* dim = output->GetDimensions();
 	// For every cluster
 	float g = 0.0f;
-	for (int i = 0; i < finalClusters.size(); i++)
+	for (int i = 0; i < outputClusters.size(); i++)
 	{
-		Cluster* cluster = finalClusters[i];
+		Cluster* cluster = outputClusters[i];
 		// Color every pixel in this cluster this label
 		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
 		{
 			const unsigned int x = cluster->pixels[j]->x;
 			const unsigned int y = cluster->pixels[j]->y;
 			const unsigned int z = cluster->pixels[j]->z;
-			const unsigned int index = x + (y + dim[1] * z) * dim[0];
-			outPtr[index] = g;
+			outPtr[x + (y + dim[1] * z) * dim[0]] = g;
 		}
 		// Increment the label
 		g += 1.0f;
@@ -310,13 +310,13 @@ void vtkSuperpixelFilter::calcRandRgb(vtkImageData* output)
 	unsigned char* outPtr = static_cast<unsigned char*>(output->GetScalarPointer());
 	int* dim = output->GetDimensions();
 	// For every cluster set a random rgb color
-	for (int i = 0; i < finalClusters.size(); i++)
+	for (int i = 0; i < outputClusters.size(); i++)
 	{
-		Cluster* cluster = finalClusters[i];
+		Cluster* cluster = outputClusters[i];
 		// Create a random color and assign it to every pixel in the cluster
-		float r = static_cast<unsigned char>(rand() % 255);
-		float g = static_cast<unsigned char>(rand() % 255);
-		float b = static_cast<unsigned char>(rand() % 255);
+		unsigned char r = static_cast<unsigned char>(rand() % 255);
+		unsigned char g = static_cast<unsigned char>(rand() % 255);
+		unsigned char b = static_cast<unsigned char>(rand() % 255);
 		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
 		{
 			const unsigned int x = cluster->pixels[j]->x;
@@ -335,10 +335,10 @@ void vtkSuperpixelFilter::calcAvgColors(vtkImageData* output)
 	float* outPtr = static_cast<float*>(output->GetScalarPointer());
 	int* dim = output->GetDimensions();
 	// For every cluster set a unique color
-	for (int i = 0; i < finalClusters.size(); i++)
+	for (int i = 0; i < outputClusters.size(); i++)
 	{
-		Cluster* cluster = finalClusters[i];
-		float avg = cluster->sumG / cluster->pixels.size();
+		Cluster* cluster = outputClusters[i];
+		float avg = cluster->getAvgIntensity();
 		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
 		{
 			const unsigned int x = cluster->pixels[j]->x;
@@ -354,15 +354,10 @@ void vtkSuperpixelFilter::calcMaxColors(vtkImageData* output)
 	float* outPtr = static_cast<float*>(output->GetScalarPointer());
 	int* dim = output->GetDimensions();
 	// For every cluster set a unique color
-	for (int i = 0; i < finalClusters.size(); i++)
+	for (int i = 0; i < outputClusters.size(); i++)
 	{
-		Cluster* cluster = finalClusters[i];
-		float max = VTK_FLOAT_MIN;
-		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
-		{
-			if (cluster->pixels[j]->g > max)
-				max = cluster->pixels[j]->g;
-		}
+		Cluster* cluster = outputClusters[i];
+		float max = cluster->getMaxIntensity();
 		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
 		{
 			const unsigned int x = cluster->pixels[j]->x;
@@ -378,15 +373,10 @@ void vtkSuperpixelFilter::calcMinColors(vtkImageData* output)
 	float* outPtr = static_cast<float*>(output->GetScalarPointer());
 	int* dim = output->GetDimensions();
 	// For every cluster set a unique color
-	for (int i = 0; i < finalClusters.size(); i++)
+	for (int i = 0; i < outputClusters.size(); i++)
 	{
-		Cluster* cluster = finalClusters[i];
-		float min = VTK_FLOAT_MAX;
-		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
-		{
-			if (cluster->pixels[j]->g < min)
-				min = cluster->pixels[j]->g;
-		}
+		Cluster* cluster = outputClusters[i];
+		float min = cluster->getMinIntensity();
 		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
 		{
 			const unsigned int x = cluster->pixels[j]->x;
@@ -426,9 +416,9 @@ void vtkSuperpixelFilter::initClusters(vtkImageData* input)
 }
 
 // Adds the pairs to the min heap
-void vtkSuperpixelFilter::initHeap(vtkImageData* input)
+MxHeap* vtkSuperpixelFilter::createHeap(vtkImageData* input)
 {
-	minHeap = new MxHeap();
+	MxHeap* minHeap = new MxHeap();
 	int* dim = input->GetDimensions();
 	int width = dim[0];
 	int height = dim[1];
@@ -489,4 +479,6 @@ void vtkSuperpixelFilter::initHeap(vtkImageData* input)
 			}
 		}
 	}
+
+	return minHeap;
 }

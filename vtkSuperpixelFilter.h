@@ -1,5 +1,4 @@
 #pragma once
-#include "Mx/MxHeap.h"
 
 #include <vtkImageAlgorithm.h>
 #include <vtkImageData.h>
@@ -8,6 +7,7 @@
 class Cluster;
 class ClusterPair;
 class PixelNode;
+class MxHeap;
 
 class vtkSuperpixelFilter : public vtkImageAlgorithm
 {
@@ -44,13 +44,13 @@ protected:
 	int RequestInformation(vtkInformation* request, vtkInformationVector** inputVec, vtkInformationVector* outputVec) VTK_OVERRIDE;
 	int RequestData(vtkInformation* request, vtkInformationVector** inputVec, vtkInformationVector* outputVec) VTK_OVERRIDE;
 
-private: // Template vtk filter code. why?
-	vtkSuperpixelFilter(const vtkSuperpixelFilter&); // Not implemented
-	void operator=(const vtkSuperpixelFilter&); // Not implemented
+private:
+	vtkSuperpixelFilter(const vtkSuperpixelFilter&);
+	void operator=(const vtkSuperpixelFilter&);
 
 	void initClusters(vtkImageData* input);
-	void initHeap(vtkImageData* input);
-	void removeEdges(ClusterPair* pair);
+	MxHeap* createHeap(vtkImageData* input);
+	void removeEdges(MxHeap* minHeap, ClusterPair* pair);
 
 	void calcColorLabels(vtkImageData* output);
 	void calcRandRgb(vtkImageData* output);
@@ -62,13 +62,11 @@ private: // Template vtk filter code. why?
 	void computeSwap(int width, int height, int depth);
 
 private:
-	// Min heap of cluster pairs each containing two clusters from the clusters array
-	MxHeap* minHeap;
 	// Clusters array containing every cluster made
-	Cluster* clusters;
+	Cluster* clusters = nullptr;
+	PixelNode* px = nullptr;
 	// Points to all the resulting clusters (subset of clusters)
-	std::vector<Cluster*> finalClusters;
-	PixelNode* px;
+	std::vector<Cluster*> outputClusters;
 
 	OutputType outputType = LABEL;
 	unsigned int NumberOfSuperpixels = 0;

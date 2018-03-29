@@ -30,7 +30,7 @@ void test2DImage()
 {
 	// Read the 2d png
 	vtkSmartPointer<vtkPNGReader> reader = vtkSmartPointer<vtkPNGReader>::New();
-	reader->SetFileName("C:/Users/Andx_/Desktop/image6.png");
+	reader->SetFileName("C:/Users/Andx_/Desktop/22090.png");
 	reader->Update();
 	// Cast to float in case it's not already float (since my filter only works with float)
 	vtkSmartPointer<vtkImageCast> cast = vtkSmartPointer<vtkImageCast>::New();
@@ -50,9 +50,9 @@ void test2DImage()
 	// Superpixel segment
 	vtkSmartPointer<vtkSuperpixelFilter> superpixelFilter = vtkSmartPointer<vtkSuperpixelFilter>::New();
 	superpixelFilter->SetInputData(input);
-	superpixelFilter->SetNumberOfSuperpixels(50);
-	superpixelFilter->SetSwapIterations(200);
-	superpixelFilter->SetOutputType(vtkSuperpixelFilter::AVGCOLOR);
+	superpixelFilter->SetNumberOfSuperpixels(300);
+	superpixelFilter->SetSwapIterations(100);
+	superpixelFilter->SetOutputType(vtkSuperpixelFilter::RANDRGB);
 	superpixelFilter->Update();
 
 	// Visualize

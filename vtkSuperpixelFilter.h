@@ -29,6 +29,7 @@ public:
 	vtkTypeMacro(vtkSuperpixelFilter, vtkImageAlgorithm);
 
 	vtkSuperpixelFilter() { }
+	~vtkSuperpixelFilter();
 
 	void SetInputData(vtkImageData* data) { vtkImageAlgorithm::SetInputData(data); }
 	void SetOutputType(OutputType outputType) { vtkSuperpixelFilter::outputType = outputType; this->Modified(); }
@@ -39,6 +40,8 @@ public:
 	// The color is scaled by this when added to the heap
 	vtkSetMacro(ColorWeight, double);
 	vtkGetMacro(ColorWeight, double);
+	std::vector<Cluster*> getClusters() { return outputClusters; }
+	std::vector<ClusterPair*> getClusterPairs() { return outputPairs; }
 
 protected:
 	int RequestInformation(vtkInformation* request, vtkInformationVector** inputVec, vtkInformationVector* outputVec) VTK_OVERRIDE;
@@ -67,6 +70,9 @@ private:
 	PixelNode* px = nullptr;
 	// Points to all the resulting clusters (subset of clusters)
 	std::vector<Cluster*> outputClusters;
+	std::vector<ClusterPair*> outputPairs;
+
+	MxHeap* minHeap = nullptr;
 
 	OutputType outputType = LABEL;
 	unsigned int NumberOfSuperpixels = 0;

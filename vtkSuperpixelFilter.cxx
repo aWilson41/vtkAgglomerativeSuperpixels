@@ -16,6 +16,20 @@
 
 vtkStandardNewMacro(vtkSuperpixelFilter);
 
+vtkSuperpixelFilter::~vtkSuperpixelFilter()
+{
+	if (clusters != nullptr)
+		delete[] clusters;
+	if (px != nullptr)
+		delete[] px;
+	for (unsigned int i = 0; i < outputPairs.size(); i++)
+	{
+		delete outputPairs[i];
+	}
+	if (minHeap != nullptr)
+		delete minHeap;
+}
+
 int vtkSuperpixelFilter::RequestInformation(vtkInformation* vtkNotUsed(request), vtkInformationVector** vtkNotUsed(inputVec), vtkInformationVector* outputVec)
 {
 	// get the info objects
@@ -71,9 +85,19 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 	output->SetDimensions(dim);
 	output->AllocateScalars(outInfo);
 
+	// Clean the minheap if it's already been created
+	if (minHeap != nullptr)
+	{
+		delete minHeap;
+		for (unsigned int i = 0; i < minHeap->size(); i++)
+		{
+			delete minHeap->item(i);
+		}
+	}
+
 	// Creates clusters and heap from input image
 	initClusters(input);
-	MxHeap* minHeap = createHeap(input);
+	minHeap = createHeap(input);
 
 	auto start = std::chrono::steady_clock::now();
 
@@ -122,7 +146,7 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 		UpdateProgress((numPx - n) / static_cast<double>(pxToDecimate));
 	}
 
-	// Extract a vector of clusters that are still valid
+	// Extract the subset of clusters that are still valid
 	outputClusters.clear();
 	outputClusters.resize(NumberOfSuperpixels);
 	unsigned int index = 0;
@@ -130,6 +154,14 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 	{
 		if (clusters[i].energy != -1.0f)
 			outputClusters[index++] = &clusters[i];
+	}
+	// Extract the remaining pairs
+	index = 0;
+	outputPairs.clear();
+	outputPairs.resize(minHeap->size());
+	for (unsigned int i = 0; i < minHeap->size(); i++)
+	{
+		outputPairs[index++] = static_cast<ClusterPair*>(minHeap->item(i));
 	}
 
 	// Perform swap optimization
@@ -149,15 +181,6 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 		calcMaxColors(output);
 	else if (outputType == MINCOLOR)
 		calcMinColors(output);
-
-	// Cleanup
-	delete[] clusters;
-	delete[] px;
-	for (unsigned int i = 0; i < minHeap->size(); i++)
-	{
-		delete minHeap->item(i);
-	}
-	delete minHeap;
 
 	auto end = std::chrono::steady_clock::now();
 	printf("Time: %f\n", std::chrono::duration<double, std::milli>(end - start).count() / 1000.0);
@@ -394,8 +417,14 @@ void vtkSuperpixelFilter::initClusters(vtkImageData* input)
 	float* inPtr = static_cast<float*>(input->GetScalarPointer());
 	int* dim = input->GetDimensions();
 	int numPx = dim[0] * dim[1] * dim[2];
+
+	if (clusters != nullptr)
+		delete[] clusters;
+	if (px != nullptr)
+		delete[] px;
 	clusters = new Cluster[numPx];
 	px = new PixelNode[numPx];
+
 	int index = 0;
 	for (int z = 0; z < dim[2]; z++)
 	{

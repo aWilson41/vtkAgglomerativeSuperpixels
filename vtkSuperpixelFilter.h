@@ -15,6 +15,8 @@ public:
 	// Color labels: Sequential unique grayscale for every cluster (ie: 0, 1, 2, ...)
 	// Random rgb: Random rgb value for every cluster
 	// Average color: Averages the grayscale output
+	// Max: Takes the maximum of the cluster
+	// Min: Takes the minimum of the cluster
 	enum OutputType
 	{
 		LABEL,
@@ -76,6 +78,6 @@ private:
 
 	OutputType outputType = LABEL;
 	unsigned int NumberOfSuperpixels = 0;
-	double ColorWeight = 1.0f;
+	double ColorWeight = 1.0;
 	unsigned int SwapIterations = 0;
 };

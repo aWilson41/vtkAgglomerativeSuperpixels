@@ -202,11 +202,9 @@ void vtkSuperpixelFilter::removeEdges(MxHeap* minHeap, ClusterPair* pair)
 	for (int i = 0; i < c2->pairs.size(); i++)
 	{
 		ClusterPair* pair1 = c2->pairs[i];
-		// We know c2 is one of the clusters in the pair. We don't know which one.
-		// If p1 is c2, then change the connection so that it's between c1
+		// We know c2 is one of the clusters in the pair. Here we test which one
 		if (pair1->c1 == c2)
 			pair1->c1 = c1;
-		// If not then p2 is c2, change the connection so that it's between c1
 		else
 			pair1->c2 = c1;
 	}

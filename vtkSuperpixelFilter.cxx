@@ -69,11 +69,6 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 		vtkWarningMacro(<< "Invalid number of superpixles.");
 		return 1;
 	}
-	if (input->GetScalarType() != VTK_FLOAT)
-	{
-		vtkWarningMacro(<< "Only float images are supported.");
-		return 1;
-	}
 	// Set the information
 	output->SetExtent(outInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT()));
 	output->SetNumberOfScalarComponents(1, outInfo);

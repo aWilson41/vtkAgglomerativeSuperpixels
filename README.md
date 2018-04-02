@@ -1,6 +1,6 @@
 Superpixel segmentation using agglomerative clustering implemented as a VTK filter. VTK doesn't provide a good minheap and neither does the std namespace so Mx v1 (free of use) from CMU is included.
 
-Note: This filter only works with 2d or 3d grayscale float images. Would be easy to alter to other data types and color spaces. ie: rgb, lab, etc. Optionally just cast your image to float before using.
+Note: This filter only works with 2d or 3d grayscale images. Would be easy to alter to other data types and color spaces. ie: rgb, lab, etc. This filter takes any input image, internally uses float, and outputs a float image.
 
 You've got a few options with this filter.
 - SetOutputType: Specifies how the output image should be shown.

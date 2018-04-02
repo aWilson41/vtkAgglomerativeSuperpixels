@@ -40,8 +40,8 @@ public:
 
 int main(int argc, char* argv[])
 {
-	//test2DImage();
-	test3DImage();
+	test2DImage();
+	//test3DImage();
 
 	return EXIT_SUCCESS;
 }
@@ -52,17 +52,12 @@ void test2DImage()
 	vtkSmartPointer<vtkPNGReader> reader = vtkSmartPointer<vtkPNGReader>::New();
 	reader->SetFileName("C:/Users/Andx_/Desktop/image61.png");
 	reader->Update();
-	// Cast to float in case it's not already float (since my filter only works with float)
-	vtkSmartPointer<vtkImageCast> cast = vtkSmartPointer<vtkImageCast>::New();
-	cast->SetInputData(reader->GetOutput());
-	cast->SetOutputScalarTypeToFloat();
-	cast->Update();
 
-	vtkSmartPointer<vtkImageData> input = cast->GetOutput();
+	vtkSmartPointer<vtkImageData> input = reader->GetOutput();
 	if (input->GetNumberOfScalarComponents() > 1)
 	{
 		vtkSmartPointer<vtkImageLuminance> toGrayScale = vtkSmartPointer<vtkImageLuminance>::New();
-		toGrayScale->SetInputData(cast->GetOutput());
+		toGrayScale->SetInputData(reader->GetOutput());
 		toGrayScale->Update();
 		input = toGrayScale->GetOutput();
 	}

@@ -8,6 +8,7 @@
 #include <vtkObjectFactory.h>
 #include <vtkStreamingDemandDrivenPipeline.h>
 #include <vtkInformationVector.h>
+#include <vtkImageProgressIterator.h>
 #include <vtkInformation.h>
 #include <algorithm>
 
@@ -409,13 +410,48 @@ void vtkSuperpixelFilter::calcMinColors(vtkImageData* output)
 }
 
 
+// Creates an array of pixels and clusters for
+template<class T>
+void createClusters(vtkSuperpixelFilter* self, vtkImageData* input, PixelNode* px, Cluster* clusters, T*)
+{
+	int* dim = input->GetDimensions();
+	vtkImageIterator<T> inIt(input, input->GetExtent());
+
+	double ColorWeight = self->GetColorWeight();
+
+	int index = 0;
+	// Loop through output pixels
+	while (!inIt.IsAtEnd())
+	{
+		T* inSI = inIt.BeginSpan();
+		T* inSIEnd = inIt.EndSpan();
+
+		while (inSI != inSIEnd)
+		{
+			// Get the coordinate
+			int x = index % dim[0];
+			int y = (index / dim[0]) % dim[1];
+			int z = index / (dim[1] * dim[0]);
+
+			// Each cluster is a collection of PixelNodes we start with one cluster for every PixelNode then merge clusters
+			px[index] = PixelNode(x, y, z, static_cast<float>(*inSI) * ColorWeight);
+			clusters[index] = Cluster();
+			// Add the pixel to the cluster
+			clusters[index].pixels.push_back(&px[index]);
+			clusters[index].calcEnergy();
+			index++;
+			inSI++;
+		}
+
+		inIt.NextSpan();
+	}
+}
+
 // Sets up all the clusters and calculates their energy. Returns the number of zeros found in the image.
 void vtkSuperpixelFilter::initClusters(vtkImageData* input)
 {
-	float* inPtr = static_cast<float*>(input->GetScalarPointer());
 	int* dim = input->GetDimensions();
 	int numPx = dim[0] * dim[1] * dim[2];
-
 	if (clusters != nullptr)
 		delete[] clusters;
 	if (px != nullptr)
@@ -423,23 +459,13 @@ void vtkSuperpixelFilter::initClusters(vtkImageData* input)
 	clusters = new Cluster[numPx];
 	px = new PixelNode[numPx];
 
-	int index = 0;
-	for (int z = 0; z < dim[2]; z++)
+	switch (input->GetScalarType())
 	{
-		for (int y = 0; y < dim[1]; y++)
-		{
-			for (int x = 0; x < dim[0]; x++)
-			{
-				// Each cluster is a collection of PixelNodes we start with one cluster for every PixelNode then merge clusters
-				px[index] = PixelNode(x, y, z, inPtr[index] * ColorWeight);
-				clusters[index] = Cluster();
-				// Add the pixel to the cluster
-				clusters[index].pixels.push_back(&px[index]);
-				clusters[index].calcEnergy();
-				index++;
-			}
-		}
-	}
+		vtkTemplateMacro(createClusters(this, input, px, clusters, static_cast<VTK_TT*>(0)));
+	default:
+		vtkErrorMacro(<< "Execute: Unknown input ScalarType");
+		return;
+	};
 }
 
 // Adds the pairs to the min heap

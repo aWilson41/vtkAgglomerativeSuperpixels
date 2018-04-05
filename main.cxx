@@ -50,7 +50,7 @@ void test2DImage()
 {
 	// Read the 2d png
 	vtkSmartPointer<vtkPNGReader> reader = vtkSmartPointer<vtkPNGReader>::New();
-	reader->SetFileName("C:/Users/Andx_/Desktop/image61.png");
+	reader->SetFileName("C:/Users/Andx_/Desktop/image6.png");
 	reader->Update();
 
 	vtkSmartPointer<vtkImageData> input = reader->GetOutput();
@@ -66,7 +66,7 @@ void test2DImage()
 	vtkSmartPointer<vtkSuperpixelFilter> superpixelFilter = vtkSmartPointer<vtkSuperpixelFilter>::New();
 	superpixelFilter->SetInputData(input);
 	superpixelFilter->SetNumberOfSuperpixels(300);
-	superpixelFilter->SetSwapIterations(0);
+	superpixelFilter->SetSwapIterations(60);
 	superpixelFilter->SetOutputType(vtkSuperpixelFilter::AVGCOLOR);
 	superpixelFilter->Update();
 
@@ -99,20 +99,15 @@ void test3DImage()
 	// Read 2d or 3d meta image (mhd)
 	vtkSmartPointer<vtkNIFTIImageReader> reader = vtkSmartPointer<vtkNIFTIImageReader>::New();
 	//reader->SetFileName("MPRAGE_iso_sag.mhd");
-	reader->SetFileName("C:/Users/Andx_/Desktop/3DisoFLAIR_sag.nii");
+	reader->SetFileName("C:/Users/Andx_/Desktop/tumorROI.nii");
 	//reader->SetFileName("C:/Users/Andx_/Desktop/ROI/3DisoFLAIR_sagGaussian.mhd");
 	reader->Update();
 
-	// Cast to float in case it's not already float (since my filter only works with float)
-	vtkSmartPointer<vtkImageCast> cast = vtkSmartPointer<vtkImageCast>::New();
-	cast->SetInputData(reader->GetOutput());
-	cast->SetOutputScalarTypeToFloat();
-	cast->Update();
-
 	// Superpixel segment
 	vtkSmartPointer<vtkSuperpixelFilter> superpixelFilter = vtkSmartPointer<vtkSuperpixelFilter>::New();
-	superpixelFilter->SetInputData(cast->GetOutput());
-	superpixelFilter->SetNumberOfSuperpixels(1000);
+	superpixelFilter->SetInputData(reader->GetOutput());
+	superpixelFilter->SetNumberOfSuperpixels(10);
+	superpixelFilter->SetSwapIterations(60);
 	superpixelFilter->SetOutputType(vtkSuperpixelFilter::AVGCOLOR);
 	superpixelFilter->Update();
 

@@ -249,9 +249,12 @@ void vtkSuperpixelFilter::computeSwap(int width, int height, int depth)
 	std::vector<Swap> swaps;
 
 	// Neighborhood iteration
-	const int neighborhood[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
-	//int a = width * height;
-	const int neighborShift[4] = { 1, -1, width, -width };
+	/*int neighborCount = 4;
+	if (depth > 1)
+		neighborCount = 6;*/
+	const int neighborhood[6][3] = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 } };
+	const int a = width * height;
+	const int neighborShift[6] = { 1, -1, width, -width, a, -a };
 	// Calc the cost of swapping every border pixel to it's axial neighbors
 	for (int z = 0; z < depth; z++)
 	{
@@ -265,12 +268,13 @@ void vtkSuperpixelFilter::computeSwap(int width, int height, int depth)
 				Cluster* c1 = swapPx->parent;
 				Swap minSwap;
 				// For every neighbor
-				for (unsigned int j = 0; j < 4; j++)
+				for (unsigned int j = 0; j < 6; j++)
 				{
 					int xp = x + neighborhood[j][0];
 					int yp = y + neighborhood[j][1];
+					int zp = z + neighborhood[j][2];
 					// Check bounds
-					if (xp >= 0 && yp >= 0 && xp < width && yp < height)
+					if (xp >= 0 && yp >= 0 && xp < width && yp < height && zp >= 0 && zp < depth)
 					{
 						PixelNode* neighborPx = &px[i + neighborShift[j]];
 						Cluster* c2 = neighborPx->parent;

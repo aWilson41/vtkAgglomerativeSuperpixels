@@ -249,9 +249,6 @@ void vtkSuperpixelFilter::computeSwap(int width, int height, int depth)
 	std::vector<Swap> swaps;
 
 	// Neighborhood iteration
-	/*int neighborCount = 4;
-	if (depth > 1)
-		neighborCount = 6;*/
 	const int neighborhood[6][3] = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 } };
 	const int a = width * height;
 	const int neighborShift[6] = { 1, -1, width, -width, a, -a };

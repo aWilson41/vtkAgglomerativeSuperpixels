@@ -11,6 +11,7 @@
 #include <vtkImageMapToWindowLevelColors.h>
 #include <vtkImageCast.h>
 #include <vtkNIFTIImageReader.h>
+#include <vtkNIFTIImageWriter.h>
 #include <vtkPNGWriter.h>
 #include <vtkImageLuminance.h>
 #include <vtkSliderWidget.h>
@@ -40,8 +41,8 @@ public:
 
 int main(int argc, char* argv[])
 {
-	test2DImage();
-	//test3DImage();
+	//test2DImage();
+	test3DImage();
 
 	return EXIT_SUCCESS;
 }
@@ -106,8 +107,8 @@ void test3DImage()
 	// Superpixel segment
 	vtkSmartPointer<vtkSuperpixelFilter> superpixelFilter = vtkSmartPointer<vtkSuperpixelFilter>::New();
 	superpixelFilter->SetInputData(reader->GetOutput());
-	superpixelFilter->SetNumberOfSuperpixels(10);
-	superpixelFilter->SetSwapIterations(60);
+	superpixelFilter->SetNumberOfSuperpixels(500);
+	superpixelFilter->SetSwapIterations(0);
 	superpixelFilter->SetOutputType(vtkSuperpixelFilter::AVGCOLOR);
 	superpixelFilter->Update();
 
@@ -156,4 +157,9 @@ void test3DImage()
 	/*imageViewer->GetRenderer()->ResetCamera();
 	imageViewer->Render();*/
 	renderWindowInteractor->Start();
+
+	vtkSmartPointer<vtkNIFTIImageWriter> writer = vtkSmartPointer<vtkNIFTIImageWriter>::New();
+	writer->SetInputData(superpixelFilter->GetOutput());
+	writer->SetFileName("C:/Users/Andx_/Desktop/spdiv.nii");
+	writer->Write();
 }

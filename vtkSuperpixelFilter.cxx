@@ -411,35 +411,26 @@ template<class T>
 void createClusters(vtkSuperpixelFilter* self, vtkImageData* input, PixelNode* px, Cluster* clusters, T*)
 {
 	int* dim = input->GetDimensions();
-	vtkImageIterator<T> inIt(input, input->GetExtent());
-
+	T* inPtr = static_cast<T*>(input->GetScalarPointer());
 	double ColorWeight = self->GetColorWeight();
 
+	// Add all the horz edges
 	int index = 0;
-	// Loop through output pixels
-	while (!inIt.IsAtEnd())
+	for (int z = 0; z < dim[2]; z++)
 	{
-		T* inSI = inIt.BeginSpan();
-		T* inSIEnd = inIt.EndSpan();
-
-		while (inSI != inSIEnd)
+		for (int y = 0; y < dim[1]; y++)
 		{
-			// Get the coordinate
-			int x = index % dim[0];
-			int y = (index / dim[0]) % dim[1];
-			int z = index / (dim[1] * dim[0]);
-
-			// Each cluster is a collection of PixelNodes we start with one cluster for every PixelNode then merge clusters
-			px[index] = PixelNode(x, y, z, static_cast<float>(*inSI) * ColorWeight);
-			clusters[index] = Cluster();
-			// Add the pixel to the cluster
-			clusters[index].pixels.push_back(&px[index]);
-			clusters[index].calcEnergy();
-			index++;
-			inSI++;
+			for (int x = 0; x < dim[0]; x++)
+			{
+				// Each cluster is a collection of PixelNodes we start with one cluster for every PixelNode then merge clusters
+				px[index] = PixelNode(x, y, z, static_cast<float>(inPtr[index]) * ColorWeight);
+				clusters[index] = Cluster();
+				// Add the pixel to the cluster
+				clusters[index].pixels.push_back(&px[index]);
+				clusters[index].calcEnergy();
+				index++;
+			}
 		}
-
-		inIt.NextSpan();
 	}
 }
 

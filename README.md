@@ -1,6 +1,8 @@
-Superpixel segmentation using agglomerative clustering implemented as a VTK filter. VTK doesn't provide a good minheap and neither does the std namespace so Mx v1 (free of use) from CMU is included.
+Superpixel segmentation implementation of "Superpixel Generation by Agglomerative Clustering with Quadratic Error Minimization." Neither VTK or std's minheap are very good so the minheap fr om Mx v1 (free of use) from CMU is included.
 
-Note: This filter only works with 2d or 3d grayscale images. Would be easy to alter to other data types and color spaces. ie: rgb, lab, etc. This filter takes any input image, internally uses float, and outputs a float image.
+https://www.utdallas.edu/~xxg061000/Superpixel_CGF2018.pdf
+
+Note: This filter only works with 2d or 3d grayscale images. This filter takes any input image, internally uses float, and outputs a float image of the same dimension. The only big difference from the paper is that I don't use matrix representation. Without it we can easily compute the sum of square shortcut.
 
 You've got a few options with this filter.
 - SetOutputType: Specifies how the output image should be shown.

@@ -1,7 +1,6 @@
 #include "Cluster.h"
+#include "ClusterPair.h"
 #include "PixelNode.h"
-
-#include <algorithm>
 
 void Cluster::calcEnergy()
 {

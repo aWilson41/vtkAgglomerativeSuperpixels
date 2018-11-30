@@ -1,8 +1,7 @@
 #pragma once
-
+#include <vector>
 #include <vtkImageAlgorithm.h>
 #include <vtkImageData.h>
-#include <vector>
 
 class Cluster;
 class ClusterPair;
@@ -33,7 +32,6 @@ public:
 	vtkSuperpixelFilter() { }
 	~vtkSuperpixelFilter();
 
-	void SetInputData(vtkImageData* data) { vtkImageAlgorithm::SetInputData(data); }
 	void SetOutputType(OutputType outputType) { vtkSuperpixelFilter::outputType = outputType; this->Modified(); }
 	vtkSetMacro(NumberOfSuperpixels, unsigned int);
 	vtkGetMacro(NumberOfSuperpixels, unsigned int);
@@ -44,6 +42,8 @@ public:
 	vtkGetMacro(ColorWeight, double);
 	std::vector<Cluster*> getClusters() { return outputClusters; }
 	std::vector<ClusterPair*> getClusterPairs() { return outputPairs; }
+	PixelNode* getPixels() { return px; }
+	int getPixelCount() { return NumberOfPixels; }
 
 protected:
 	int RequestInformation(vtkInformation* request, vtkInformationVector** inputVec, vtkInformationVector* outputVec) VTK_OVERRIDE;
@@ -78,6 +78,7 @@ private:
 
 	OutputType outputType = LABEL;
 	unsigned int NumberOfSuperpixels = 0;
+	unsigned int NumberOfPixels = 0;
 	double ColorWeight = 1.0;
 	unsigned int SwapIterations = 0;
 };

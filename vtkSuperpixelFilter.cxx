@@ -1,19 +1,14 @@
 #include "vtkSuperpixelFilter.h"
-#include "ClusterPair.h"
 #include "Cluster.h"
-#include "Swap.h"
+#include "ClusterPair.h"
 #include "PixelNode.h"
-#include "Mx/MxHeap.h"
-
-#include <vtkObjectFactory.h>
-#include <vtkStreamingDemandDrivenPipeline.h>
-#include <vtkInformationVector.h>
-#include <vtkImageProgressIterator.h>
-#include <vtkInformation.h>
+#include "Swap.h"
 #include <algorithm>
+#include <vtkInformation.h>
+#include <vtkInformationVector.h>
+#include <vtkObjectFactory.h>
 
-// For benchmarking
-#include <chrono>
+//#include <chrono>
 
 vtkStandardNewMacro(vtkSuperpixelFilter);
 
@@ -35,7 +30,7 @@ int vtkSuperpixelFilter::RequestInformation(vtkInformation* vtkNotUsed(request),
 {
 	// get the info objects
 	vtkInformation* outInfo = outputVec->GetInformationObject(0);
-	if (outputType == AVGCOLOR || outputType == LABEL)
+	if (outputType == AVGCOLOR || outputType == LABEL || outputType == MAXCOLOR || outputType == MINCOLOR)
 		vtkDataObject::SetPointDataActiveScalarInfo(outInfo, VTK_FLOAT, 1);
 	else if (outputType == RANDRGB)
 		vtkDataObject::SetPointDataActiveScalarInfo(outInfo, VTK_UNSIGNED_CHAR, 3);
@@ -70,7 +65,9 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 		return 1;
 	}
 	// Set the information
-	output->SetExtent(outInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT()));
+	output->SetExtent(input->GetExtent());
+	output->SetOrigin(input->GetOrigin());
+	output->SetSpacing(input->GetSpacing());
 	output->SetNumberOfScalarComponents(1, outInfo);
 	output->SetScalarType(VTK_FLOAT, outInfo);
 	if (outputType == RANDRGB)
@@ -78,24 +75,27 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 		output->SetNumberOfScalarComponents(3, outInfo);
 		output->SetScalarType(VTK_UNSIGNED_CHAR, outInfo);
 	}
-	output->SetDimensions(dim);
 	output->AllocateScalars(outInfo);
 
 	// Clean the minheap if it's already been created
 	if (minHeap != nullptr)
 	{
-		delete minHeap;
 		for (unsigned int i = 0; i < minHeap->size(); i++)
 		{
 			delete minHeap->item(i);
 		}
+		delete minHeap;
 	}
+	if (clusters != nullptr)
+		delete[] clusters;
+	if (px != nullptr)
+		delete[] px;
 
 	// Creates clusters and heap from input image
 	initClusters(input);
 	minHeap = createHeap(input);
 
-	auto start = std::chrono::steady_clock::now();
+	//auto start = std::chrono::steady_clock::now();
 
 	unsigned int n = numPx;
 	// For progress
@@ -139,7 +139,8 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 		n--;
 
 		// Update the progress of the filter
-		UpdateProgress((numPx - n) / static_cast<double>(pxToDecimate));
+		if (n % 10000 == 0)
+			UpdateProgress((numPx - n) / static_cast<double>(pxToDecimate));
 	}
 
 	// Extract the subset of clusters that are still valid
@@ -165,7 +166,7 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 	{
 		computeSwap(dim[0], dim[1], dim[2]);
 	}
-
+	
 	// User can specify different output options
 	if (outputType == LABEL)
 		calcColorLabels(output);
@@ -178,8 +179,8 @@ int vtkSuperpixelFilter::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 	else if (outputType == MINCOLOR)
 		calcMinColors(output);
 
-	auto end = std::chrono::steady_clock::now();
-	printf("Time: %f\n", std::chrono::duration<double, std::milli>(end - start).count() / 1000.0);
+	/*auto end = std::chrono::steady_clock::now();
+	printf("Time: %f\n", std::chrono::duration<double, std::milli>(end - start).count() / 1000.0);*/
 
 	return 1;
 }
@@ -316,6 +317,7 @@ void vtkSuperpixelFilter::calcColorLabels(vtkImageData* output)
 			const unsigned int x = cluster->pixels[j]->x;
 			const unsigned int y = cluster->pixels[j]->y;
 			const unsigned int z = cluster->pixels[j]->z;
+			cluster->pixels[j]->parent = cluster;
 			outPtr[x + (y + dim[1] * z) * dim[0]] = g;
 		}
 		// Increment the label
@@ -341,6 +343,7 @@ void vtkSuperpixelFilter::calcRandRgb(vtkImageData* output)
 			const unsigned int y = cluster->pixels[j]->y;
 			const unsigned int z = cluster->pixels[j]->z;
 			const unsigned int index = (x + (y + dim[1] * z) * dim[0]) * 3;
+			cluster->pixels[j]->parent = cluster;
 			outPtr[index] = r;
 			outPtr[index + 1] = g;
 			outPtr[index + 2] = b;
@@ -356,12 +359,13 @@ void vtkSuperpixelFilter::calcAvgColors(vtkImageData* output)
 	for (int i = 0; i < outputClusters.size(); i++)
 	{
 		Cluster* cluster = outputClusters[i];
-		float avg = cluster->getAvgIntensity();
+		float avg = cluster->getAvgIntensity() / ColorWeight;
 		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
 		{
 			const unsigned int x = cluster->pixels[j]->x;
 			const unsigned int y = cluster->pixels[j]->y;
 			const unsigned int z = cluster->pixels[j]->z;
+			cluster->pixels[j]->parent = cluster;
 			outPtr[x + (y + dim[1] * z) * dim[0]] = avg;
 		}
 	}
@@ -375,12 +379,13 @@ void vtkSuperpixelFilter::calcMaxColors(vtkImageData* output)
 	for (int i = 0; i < outputClusters.size(); i++)
 	{
 		Cluster* cluster = outputClusters[i];
-		float max = cluster->getMaxIntensity();
+		float max = cluster->getMaxIntensity() / ColorWeight;
 		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
 		{
 			const unsigned int x = cluster->pixels[j]->x;
 			const unsigned int y = cluster->pixels[j]->y;
 			const unsigned int z = cluster->pixels[j]->z;
+			cluster->pixels[j]->parent = cluster;
 			outPtr[x + (y + dim[1] * z) * dim[0]] = max;
 		}
 	}
@@ -394,19 +399,20 @@ void vtkSuperpixelFilter::calcMinColors(vtkImageData* output)
 	for (int i = 0; i < outputClusters.size(); i++)
 	{
 		Cluster* cluster = outputClusters[i];
-		float min = cluster->getMinIntensity();
+		float min = cluster->getMinIntensity() / ColorWeight;
 		for (unsigned int j = 0; j < cluster->pixels.size(); j++)
 		{
 			const unsigned int x = cluster->pixels[j]->x;
 			const unsigned int y = cluster->pixels[j]->y;
 			const unsigned int z = cluster->pixels[j]->z;
+			cluster->pixels[j]->parent = cluster;
 			outPtr[x + (y + dim[1] * z) * dim[0]] = min;
 		}
 	}
 }
 
 
-// Creates an array of pixels and clusters for
+// Creates an array of pixels and clusters
 template<class T>
 void createClusters(vtkSuperpixelFilter* self, vtkImageData* input, PixelNode* px, Cluster* clusters, T*)
 {
@@ -414,7 +420,6 @@ void createClusters(vtkSuperpixelFilter* self, vtkImageData* input, PixelNode* p
 	T* inPtr = static_cast<T*>(input->GetScalarPointer());
 	double ColorWeight = self->GetColorWeight();
 
-	// Add all the horz edges
 	int index = 0;
 	for (int z = 0; z < dim[2]; z++)
 	{
@@ -438,13 +443,9 @@ void createClusters(vtkSuperpixelFilter* self, vtkImageData* input, PixelNode* p
 void vtkSuperpixelFilter::initClusters(vtkImageData* input)
 {
 	int* dim = input->GetDimensions();
-	int numPx = dim[0] * dim[1] * dim[2];
-	if (clusters != nullptr)
-		delete[] clusters;
-	if (px != nullptr)
-		delete[] px;
-	clusters = new Cluster[numPx];
-	px = new PixelNode[numPx];
+	NumberOfPixels = dim[0] * dim[1] * dim[2];
+	clusters = new Cluster[NumberOfPixels];
+	px = new PixelNode[NumberOfPixels];
 
 	switch (input->GetScalarType())
 	{

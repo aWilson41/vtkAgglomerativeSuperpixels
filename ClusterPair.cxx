@@ -22,3 +22,12 @@ void ClusterPair::calcMergingCost()
 	energy = sumSqr - (sumX * sumX + sumY * sumY + sumZ * sumZ + sumG * sumG) / (c1->pixels.size() + c2->pixels.size());
 	dEnergy = energy - c1->energy - c2->energy;
 }
+
+// Returns the node that is not this one
+Cluster* ClusterPair::getNeighbor(Cluster* cluster)
+{
+	if (c1 == cluster)
+		return c2;
+	else
+		return c1;
+}

@@ -1,6 +1,5 @@
 #pragma once
-
-#include "Mx\MxHeap.h"
+#include "Mx/MxHeap.h"
 
 class Cluster;
 
@@ -12,6 +11,8 @@ public:
 	ClusterPair(Cluster* c1, Cluster* c2);
 
 	void calcMergingCost();
+
+	Cluster* getNeighbor(Cluster* cluster);
 
 public:
 	Cluster* c1 = nullptr;

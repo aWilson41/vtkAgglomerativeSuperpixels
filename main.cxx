@@ -1,30 +1,25 @@
 #include "vtkSuperpixelFilter.h"
-
-#include <vtkSmartPointer.h>
-#include <vtkImageExtractComponents.h>
-#include <vtkImageViewer2.h>
-#include <vtkPNGReader.h>
-#include <vtkRenderWindow.h>
-#include <vtkRenderWindowInteractor.h>
-#include <vtkRenderer.h>
 #include <vtkImageActor.h>
-#include <vtkImageMapToWindowLevelColors.h>
 #include <vtkImageCast.h>
+#include <vtkImageMagnitude.h>
+#include <vtkImageShiftScale.h>
+#include <vtkImageViewer2.h>
 #include <vtkNIFTIImageReader.h>
 #include <vtkNIFTIImageWriter.h>
+#include <vtkPNGReader.h>
 #include <vtkPNGWriter.h>
-#include <vtkImageLuminance.h>
-#include <vtkSliderWidget.h>
-#include <vtkSliderRepresentation.h>
-#include <vtkSliderRepresentation2D.h>
-#include <vtkImageShiftScale.h>
 #include <vtkProperty2D.h>
+#include <vtkRenderWindow.h>
+#include <vtkRenderWindowInteractor.h>
+#include <vtkSliderRepresentation2D.h>
+#include <vtkSliderWidget.h>
+#include <vtkSmartPointer.h>
 #include <vtkTextProperty.h>
 
 void test3DImage();
 void test2DImage();
 
-// Callback for slider for 3d image tests
+// Callback for slider, for 3d image tests
 class vtkSliderCallback : public vtkCommand
 {
 public:
@@ -51,13 +46,14 @@ void test2DImage()
 {
 	// Read the 2d png
 	vtkSmartPointer<vtkPNGReader> reader = vtkSmartPointer<vtkPNGReader>::New();
-	reader->SetFileName("C:/Users/Andx_/Desktop/image6.png");
+	reader->SetFileName("C:/Users/Andx_/Desktop/test.png");
 	reader->Update();
 
+	// Convert to grayscale if rgb
 	vtkSmartPointer<vtkImageData> input = reader->GetOutput();
 	if (input->GetNumberOfScalarComponents() > 1)
 	{
-		vtkSmartPointer<vtkImageLuminance> toGrayScale = vtkSmartPointer<vtkImageLuminance>::New();
+		vtkSmartPointer<vtkImageMagnitude> toGrayScale = vtkSmartPointer<vtkImageMagnitude>::New();
 		toGrayScale->SetInputData(reader->GetOutput());
 		toGrayScale->Update();
 		input = toGrayScale->GetOutput();
@@ -66,16 +62,25 @@ void test2DImage()
 	// Superpixel segment
 	vtkSmartPointer<vtkSuperpixelFilter> superpixelFilter = vtkSmartPointer<vtkSuperpixelFilter>::New();
 	superpixelFilter->SetInputData(input);
-	superpixelFilter->SetNumberOfSuperpixels(300);
-	superpixelFilter->SetSwapIterations(60);
+	superpixelFilter->SetNumberOfSuperpixels(1000);
+	superpixelFilter->SetColorWeight(0.1);
 	superpixelFilter->SetOutputType(vtkSuperpixelFilter::AVGCOLOR);
 	superpixelFilter->Update();
+
+	// Scale to uchar
+	vtkSmartPointer<vtkImageShiftScale> shiftScale = vtkSmartPointer<vtkImageShiftScale>::New();
+	shiftScale->SetInputData(superpixelFilter->GetOutput());
+	shiftScale->SetOutputScalarTypeToUnsignedChar();
+	shiftScale->SetScale(255.0f / superpixelFilter->GetOutput()->GetScalarRange()[1]);
+	shiftScale->Update();
 
 	// Visualize
 	vtkSmartPointer<vtkImageViewer2> imageViewer = vtkSmartPointer<vtkImageViewer2>::New();
 	vtkSmartPointer<vtkRenderWindowInteractor> renderWindowInteractor = vtkSmartPointer<vtkRenderWindowInteractor>::New();
 	imageViewer->GetRenderWindow()->SetSize(1000, 800);
-	imageViewer->SetInputData(superpixelFilter->GetOutput());
+	imageViewer->SetColorLevel(255.0 / 2.0);
+	imageViewer->SetColorWindow(255.0);
+	imageViewer->SetInputData(shiftScale->GetOutput());
 	imageViewer->GetImageActor()->InterpolateOff();
 	imageViewer->SetupInteractor(renderWindowInteractor);
 	//renderWindowInteractor->SetInteractorStyle(vtkSmartPointer<vtkKeyPressInteractorStyle>::New());
@@ -99,15 +104,13 @@ void test3DImage()
 {
 	// Read 2d or 3d meta image (mhd)
 	vtkSmartPointer<vtkNIFTIImageReader> reader = vtkSmartPointer<vtkNIFTIImageReader>::New();
-	//reader->SetFileName("MPRAGE_iso_sag.mhd");
-	reader->SetFileName("C:/Users/Andx_/Desktop/tumorROI.nii");
-	//reader->SetFileName("C:/Users/Andx_/Desktop/ROI/3DisoFLAIR_sagGaussian.mhd");
+	reader->SetFileName("../TestData/volumeTest.nii");
 	reader->Update();
 
 	// Superpixel segment
 	vtkSmartPointer<vtkSuperpixelFilter> superpixelFilter = vtkSmartPointer<vtkSuperpixelFilter>::New();
 	superpixelFilter->SetInputData(reader->GetOutput());
-	superpixelFilter->SetNumberOfSuperpixels(500);
+	superpixelFilter->SetNumberOfSuperpixels(50);
 	superpixelFilter->SetSwapIterations(0);
 	superpixelFilter->SetOutputType(vtkSuperpixelFilter::AVGCOLOR);
 	superpixelFilter->Update();

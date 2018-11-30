@@ -1,7 +1,6 @@
 #include "Swap.h"
 #include "Cluster.h"
 #include "PixelNode.h"
-
 #include <algorithm>
 
 Swap::Swap()

@@ -18,4 +18,4 @@ You've got a few options with this filter.
 
 ![Alt text](https://andaharoo.files.wordpress.com/2018/03/superpixel-average.png)
 
-![Alt text](https://andaharoo.files.wordpress.com/2018/03/screenshot.png)
+![Alt text](https://andaharoo.files.wordpress.com/2018/03/screenshot.png?w=1140)

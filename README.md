@@ -1,4 +1,4 @@
-# vtkNonRigidICP
+# vtkAgglomerativeSuperpixels
 
 Superpixel segmentation implementation of "Superpixel Generation by Agglomerative Clustering with Quadratic Error Minimization." Neither VTK or std's minheap are very good so the minheap fr om Mx v1 (free of use) from CMU is included.
 
